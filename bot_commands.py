@@ -212,6 +212,9 @@ class TelegramCommandHandler:
             "platformen":  self._cmd_platformen,
             "bronnen":     self._cmd_platformen,
             "keywords":    self._cmd_keywords,
+            "zoektermen":  self._cmd_zoektermen,
+            "termen":      self._cmd_zoektermen,
+            "searchterms": self._cmd_zoektermen,
             "add":         self._cmd_add,
             "remove":      self._cmd_remove,
             "disable":     self._cmd_disable,
@@ -239,8 +242,9 @@ class TelegramCommandHandler:
             "⚡ <b>WerkZoeker — Commando's</b>\n\n"
             "<b>Informatie & Bronnen</b>\n"
             "/status — Bot status &amp; statistieken\n"
-            "/platformen — Overzicht van alle 8 databronnen\n"
-            "/keywords — Toon alle actieve trefwoorden\n\n"
+            "/platformen — Overzicht van alle ondersteunde databronnen\n"
+            "/zoektermen — Overzicht van actieve zoektermen &amp; trefwoorden\n"
+            "/keywords — Toon alle actieve trefwoorden per score\n\n"
             "<b>Trefwoorden beheren</b>\n"
             "/add <i>woord:punten</i> — Voeg trefwoord toe\n"
             "  <i>Voorbeeld: /add scada:3</i>\n"
@@ -257,10 +261,44 @@ class TelegramCommandHandler:
             f"📂 Trefwoorden bestand: <code>keywords.json</code>"
         )
 
+    async def _cmd_zoektermen(self, _args: str) -> None:
+        """Show all active search terms and keywords used by the bot."""
+        from filter_engine import load_keywords
+
+        kw = load_keywords(str(self.keywords_file))
+
+        # Group by score points
+        by_pts: dict[int, list[str]] = {}
+        for word, pts in sorted(kw.items(), key=lambda x: (-x[1], x[0])):
+            by_pts.setdefault(pts, []).append(word)
+
+        lines = [
+            "🔍 <b>WerkZoeker — Actieve Zoektermen &amp; Trefwoorden</b>\n",
+            "<b>🎯 Scraper Zoektermen (waarmee platformen worden doorzocht):</b>",
+            "• <code>detail engineer elektrotechniek</code>",
+            "• <code>e-engineer zzp / interim</code>",
+            "• <code>eplan engineer</code>",
+            "• <code>hoogspanning / middenspanning engineer</code>",
+            "• <code>werkvoorbereider elektrotechniek</code>\n",
+            f"<b>📊 Filter Scoring Trefwoorden ({len(kw)} totaal):</b>",
+        ]
+
+        for pts in sorted(by_pts, reverse=True):
+            words = by_pts[pts]
+            label = f"  <b>+{pts} {'punt' if pts == 1 else 'punten'}</b> ({len(words)}):"
+            wordlist = ", ".join(f"<code>{w}</code>" for w in words)
+            lines.append(f"{label}\n  {wordlist}\n")
+
+        full_text = "\n".join(lines)
+        if len(full_text) > 3900:
+            full_text = full_text[:3900] + "\n\n<i>… (zie keywords.json voor het volledige overzicht)</i>"
+
+        await self._send(full_text)
+
     async def _cmd_platformen(self, _args: str) -> None:
-        """Show all 8 supported job platforms."""
+        """Show all 10 supported job platforms."""
         await self._send(
-            "🌐 <b>Ondersteunde Databronnen &amp; Platformen</b> (8 totaal)\n\n"
+            "🌐 <b>Ondersteunde Databronnen &amp; Platformen</b> (10 totaal)\n\n"
             "1️⃣ <b>Freelance.nl</b> — Freelance opdrachten &amp; projecten\n"
             "2️⃣ <b>Striive.com</b> — Interim &amp; freelance marktplaats\n"
             "3️⃣ <b>Werkzoeken.nl</b> — Vacatures &amp; ZZP opdrachten\n"
@@ -268,8 +306,10 @@ class TelegramCommandHandler:
             "5️⃣ <b>BlueBeaver.nl</b> — Freelance engineering projecten\n"
             "6️⃣ <b>TechnischeVacaturebank.nl</b> — Technische vacatures\n"
             "7️⃣ <b>VNOM.nl</b> — Bemiddeling in techniek &amp; ZZP\n"
-            "8️⃣ <b>Indeed NL</b> — Aggregator vacatures\n\n"
-            "<i>De bot scant alle bronnen periodiek en filtert automatisch op contractvorm (ZZP/freelance) en technische trefwoorden.</i>"
+            "8️⃣ <b>Hoofdkraan.nl</b> — ZZP &amp; Freelance marktplaats\n"
+            "9️⃣ <b>Freelancenetwerk.nl</b> — Freelance opdrachten netwerk\n"
+            "🔟 <b>Indeed NL</b> — Aggregator vacatures\n\n"
+            "<i>De bot scant al deze 10 bronnen automatisch en filtert op relevante technische trefwoorden.</i>"
         )
 
     async def _cmd_start(self, args: str) -> None:

@@ -11,6 +11,8 @@ from .dosign import DosignScraper
 from .bluebeaver import BlueBeaverScraper
 from .technischevacaturebank import TechnischeVacaturebankScraper
 from .vnom import VNOMScraper
+from .hoofdkraan import HoofdkraanScraper
+from .freelancenetwerk import FreelancenetwerkScraper
 
 __all__ = [
     "BaseScraper",
@@ -23,4 +25,6 @@ __all__ = [
     "BlueBeaverScraper",
     "TechnischeVacaturebankScraper",
     "VNOMScraper",
+    "HoofdkraanScraper",
+    "FreelancenetwerkScraper",
 ]
