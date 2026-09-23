@@ -129,7 +129,7 @@ async def run_pipeline() -> dict:
     Execute one full scrape → filter → store → notify cycle.
     Returns a stats dict for logging.
     """
-    max_pages   = int(os.getenv("MAX_PAGES_PER_SCRAPER", "5"))
+    max_pages   = int(os.getenv("MAX_PAGES_PER_SCRAPER", "50"))
     rate_limit  = float(os.getenv("RATE_LIMIT_DELAY", "2.0"))
     timeout     = float(os.getenv("REQUEST_TIMEOUT", "30"))
 

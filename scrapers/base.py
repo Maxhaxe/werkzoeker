@@ -65,7 +65,7 @@ class BaseScraper(ABC):
         "Connection": "keep-alive",
     }
 
-    def __init__(self, timeout: float = 30.0, rate_limit_delay: float = 2.0, max_pages: int = 5, **kwargs):
+    def __init__(self, timeout: float = 30.0, rate_limit_delay: float = 2.0, max_pages: int = 50, **kwargs):
         self.timeout = timeout
         self.rate_limit_delay = rate_limit_delay
         self.max_pages = max_pages
