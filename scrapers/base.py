@@ -61,13 +61,14 @@ class BaseScraper(ABC):
         ),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Encoding": "gzip, deflate",
         "Connection": "keep-alive",
     }
 
-    def __init__(self, timeout: float = 30.0, rate_limit_delay: float = 2.0):
+    def __init__(self, timeout: float = 30.0, rate_limit_delay: float = 2.0, max_pages: int = 5, **kwargs):
         self.timeout = timeout
         self.rate_limit_delay = rate_limit_delay
+        self.max_pages = max_pages
         self._client: Optional[httpx.AsyncClient] = None
 
     async def __aenter__(self) -> "BaseScraper":
@@ -142,5 +143,14 @@ class BaseScraper(ABC):
                 f"[{self.SOURCE_NAME}] HTTP {e.response.status_code} for {url}"
             )
         except httpx.RequestError as e:
-            logger.warning(f"[{self.SOURCE_NAME}] Request error for {url}: {e}")
+            if "SSL" in str(e) or "certificate" in str(e).lower() or "record layer" in str(e).lower():
+                try:
+                    async with httpx.AsyncClient(verify=False, headers=self.DEFAULT_HEADERS, timeout=self.timeout, follow_redirects=True) as fallback_client:
+                        res = await fallback_client.get(url, **kwargs)
+                        res.raise_for_status()
+                        return res
+                except Exception as fb_err:
+                    logger.warning(f"[{self.SOURCE_NAME}] SSL fallback also failed for {url}: {fb_err}")
+            else:
+                logger.warning(f"[{self.SOURCE_NAME}] Request error for {url}: {e}")
         return None

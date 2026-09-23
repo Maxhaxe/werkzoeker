@@ -525,7 +525,7 @@ class TelegramCommandHandler:
         )
 
     async def _cmd_run(self, _args: str) -> None:
-        """Trigger an immediate scrape cycle."""
+        """Trigger an immediate scrape cycle in background task."""
         if self._run_pipeline is None:
             await self._send("❌ Scanfunctie niet beschikbaar.")
             return
@@ -538,21 +538,24 @@ class TelegramCommandHandler:
         await self._send("🔄 <b>Scan gestart…</b>\nIk stuur je de resultaten zodra ik klaar ben.")
         logger.info("[Bot] Manual scan triggered via Telegram")
 
-        try:
-            stats = await self._run_pipeline()
-            await self._send(
-                f"✅ <b>Scan voltooid!</b>\n\n"
-                f"📋 Gescand: {stats.get('scraped', 0)} vacatures\n"
-                f"🎯 Gefilterd: {stats.get('passed_filter', 0)} matches\n"
-                f"🆕 Nieuw: {stats.get('new_jobs', 0)}\n"
-                f"📨 Verstuurd: {stats.get('notified', 0)}\n"
-                f"⚠️ Fouten: {stats.get('errors', 0)}"
-            )
-        except Exception as e:
-            logger.error(f"[Bot] Manual scan failed: {e}", exc_info=True)
-            await self._send(f"❌ Scan mislukt: {e}")
-        finally:
-            self._is_scanning = False
+        async def _async_scan():
+            try:
+                stats = await self._run_pipeline()
+                await self._send(
+                    f"✅ <b>Scan voltooid!</b>\n\n"
+                    f"📋 Gescand: {stats.get('scraped', 0)} vacatures\n"
+                    f"🎯 Gefilterd: {stats.get('passed_filter', 0)} matches\n"
+                    f"🆕 Nieuw: {stats.get('new_jobs', 0)}\n"
+                    f"📨 Verstuurd: {stats.get('notified', 0)}\n"
+                    f"⚠️ Fouten: {stats.get('errors', 0)}"
+                )
+            except Exception as e:
+                logger.error(f"[Bot] Manual scan failed: {e}", exc_info=True)
+                await self._send(f"❌ Scan mislukt: {e}")
+            finally:
+                self._is_scanning = False
+
+        asyncio.create_task(_async_scan())
 
     # -----------------------------------------------------------------------
     # keywords.json helpers

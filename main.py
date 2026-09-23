@@ -174,9 +174,8 @@ async def run_pipeline() -> dict:
                     if any_ok:
                         await db.mark_notified(job.id)
                         stats["notified"] += 1
-                        channels = ", ".join(r.channel for r in results if r.success)
                         logger.info(
-                            f"✅ Notified [{channels}]: '{job.title[:55]}' "
+                            f"✅ Notified [Telegram]: '{job.title[:55]}' "
                             f"(score={score}, start='{job.start_date_label}')"
                         )
                     else:
