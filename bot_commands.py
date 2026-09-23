@@ -53,14 +53,25 @@ class TelegramCommandHandler:
     """
 
     def __init__(self, run_pipeline_fn: Callable[[], Awaitable[dict]] | None = None):
-        self.bot_token   = os.getenv("TELEGRAM_BOT_TOKEN", "")
-        self.chat_id     = os.getenv("TELEGRAM_CHAT_ID", "")
+        self._bot_token  = None
+        self._chat_id    = None
         self.keywords_file = Path(os.getenv("KEYWORDS_FILE", "keywords.json"))
         self._run_pipeline = run_pipeline_fn
         self._offset     = 0   # Telegram update_id offset for getUpdates
         self._client: httpx.AsyncClient | None = None
-        self._api        = f"https://api.telegram.org/bot{self.bot_token}"
         self._running    = False
+
+    @property
+    def bot_token(self) -> str:
+        return self._bot_token or os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+    @property
+    def chat_id(self) -> str:
+        return self._chat_id or os.getenv("TELEGRAM_CHAT_ID", "")
+
+    @property
+    def _api(self) -> str:
+        return f"https://api.telegram.org/bot{self.bot_token}"
 
     # -----------------------------------------------------------------------
     # Lifecycle
@@ -101,6 +112,35 @@ class TelegramCommandHandler:
 
     def stop(self) -> None:
         self._running = False
+
+    async def process_pending_updates(self) -> int:
+        """
+        Fetch and process any unhandled pending updates non-blockingly.
+        Returns the number of processed updates.
+        """
+        if not self.bot_token or not self.chat_id:
+            return 0
+
+        processed = 0
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            self._client = client
+            try:
+                resp = await client.get(
+                    f"{self._api}/getUpdates",
+                    params={"offset": self._offset, "timeout": 0, "allowed_updates": ["message"]},
+                )
+                data = resp.json()
+                if data.get("ok"):
+                    updates = data.get("result", [])
+                    for update in updates:
+                        self._offset = update["update_id"] + 1
+                        await self._handle_update(update)
+                        processed += 1
+            except Exception as e:
+                logger.warning(f"[Bot] Pending updates check failed: {e}")
+            finally:
+                self._client = None
+        return processed
 
     # -----------------------------------------------------------------------
     # Telegram API
@@ -166,17 +206,19 @@ class TelegramCommandHandler:
         args   = parts[1].strip() if len(parts) > 1 else ""
 
         handlers = {
-            "help":      self._cmd_help,
-            "start":     self._cmd_start,   # /start is also Telegram's default
-            "status":    self._cmd_status,
-            "keywords":  self._cmd_keywords,
-            "add":       self._cmd_add,
-            "remove":    self._cmd_remove,
-            "disable":   self._cmd_disable,
-            "threshold": self._cmd_threshold,
-            "startdatum": self._cmd_startfilter,
+            "help":        self._cmd_help,
+            "start":       self._cmd_start,   # /start is also Telegram's default
+            "status":      self._cmd_status,
+            "platformen":  self._cmd_platformen,
+            "bronnen":     self._cmd_platformen,
+            "keywords":    self._cmd_keywords,
+            "add":         self._cmd_add,
+            "remove":      self._cmd_remove,
+            "disable":     self._cmd_disable,
+            "threshold":   self._cmd_threshold,
+            "startdatum":  self._cmd_startfilter,
             "startfilter": self._cmd_startfilter,
-            "run":       self._cmd_run,
+            "run":         self._cmd_run,
         }
 
         handler = handlers.get(cmd)
@@ -195,8 +237,9 @@ class TelegramCommandHandler:
     async def _cmd_help(self, _args: str) -> None:
         await self._send(
             "⚡ <b>WerkZoeker — Commando's</b>\n\n"
-            "<b>Informatie</b>\n"
+            "<b>Informatie & Bronnen</b>\n"
             "/status — Bot status &amp; statistieken\n"
+            "/platformen — Overzicht van alle 8 databronnen\n"
             "/keywords — Toon alle actieve trefwoorden\n\n"
             "<b>Trefwoorden beheren</b>\n"
             "/add <i>woord:punten</i> — Voeg trefwoord toe\n"
@@ -212,6 +255,21 @@ class TelegramCommandHandler:
             "<b>Acties</b>\n"
             "/run — Voer direct een scan uit\n\n"
             f"📂 Trefwoorden bestand: <code>keywords.json</code>"
+        )
+
+    async def _cmd_platformen(self, _args: str) -> None:
+        """Show all 8 supported job platforms."""
+        await self._send(
+            "🌐 <b>Ondersteunde Databronnen &amp; Platformen</b> (8 totaal)\n\n"
+            "1️⃣ <b>Freelance.nl</b> — Freelance opdrachten &amp; projecten\n"
+            "2️⃣ <b>Striive.com</b> — Interim &amp; freelance marktplaats\n"
+            "3️⃣ <b>Werkzoeken.nl</b> — Vacatures &amp; ZZP opdrachten\n"
+            "4️⃣ <b>Dosign.nl</b> — Engineering &amp; techniek opdrachten\n"
+            "5️⃣ <b>BlueBeaver.nl</b> — Freelance engineering projecten\n"
+            "6️⃣ <b>TechnischeVacaturebank.nl</b> — Technische vacatures\n"
+            "7️⃣ <b>VNOM.nl</b> — Bemiddeling in techniek &amp; ZZP\n"
+            "8️⃣ <b>Indeed NL</b> — Aggregator vacatures\n\n"
+            "<i>De bot scant alle bronnen periodiek en filtert automatisch op contractvorm (ZZP/freelance) en technische trefwoorden.</i>"
         )
 
     async def _cmd_start(self, args: str) -> None:

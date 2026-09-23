@@ -122,6 +122,15 @@ async def run_pipeline() -> dict:
         "started_at": datetime.utcnow().isoformat(),
     }
 
+    # 0. Process pending Telegram commands sent to the bot before starting the scan
+    try:
+        handler = TelegramCommandHandler(run_pipeline_fn=run_pipeline)
+        processed = await handler.process_pending_updates()
+        if processed > 0:
+            logger.info(f"[Bot] Processed {processed} pending Telegram command(s) before scan")
+    except Exception as e:
+        logger.warning(f"[Bot] Could not process pending commands: {e}")
+
     # 1. Scrape all sources
     all_jobs: list[JobItem] = []
     for scraper in scrapers:
@@ -391,6 +400,7 @@ Examples:
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--run-once",       action="store_true", help="Eén scan uitvoeren en stoppen")
+    group.add_argument("--listen",         action="store_true", help="Luister continu naar Telegram commando's (/help, /add, etc.)")
     group.add_argument("--test-scrapers",  action="store_true", help="Alle scrapers testen")
     group.add_argument("--test-filter",    action="store_true", help="Filter engine testen met voorbeelddata")
     group.add_argument("--test-notify",    action="store_true", help="Testbericht sturen via Telegram")
@@ -410,6 +420,10 @@ def main() -> None:
         asyncio.run(test_notify())
     elif args.show_keywords:
         show_keywords()
+    elif args.listen:
+        logger.info("Starting Telegram command listener mode...")
+        handler = TelegramCommandHandler(run_pipeline_fn=run_pipeline)
+        asyncio.run(handler.start())
     elif args.run_once:
         logger.info("Running one cycle…")
         stats = asyncio.run(run_pipeline())
