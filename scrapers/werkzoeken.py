@@ -45,13 +45,14 @@ class WerkzoekenScraper(BaseScraper):
         }
 
         for query in SEARCH_QUERIES:
-            params = {"q": query}
-            url = f"{SEARCH_URL}?{urlencode(params)}"
-            response = await self.safe_get(url, headers=headers)
-            if not response:
-                continue
+            for page in range(1, max(2, self.max_pages // 2 + 1)):
+                params = {"q": query, "page": page}
+                url = f"{SEARCH_URL}?{urlencode(params)}"
+                response = await self.safe_get(url, headers=headers)
+                if not response or response.status_code != 200:
+                    break
 
-            soup = BeautifulSoup(response.text, "html.parser")
+                soup = BeautifulSoup(response.text, "html.parser")
             for a in soup.find_all("a", href=True):
                 href = a["href"]
                 if "/vacature/" in href:

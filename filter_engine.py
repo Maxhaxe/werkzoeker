@@ -329,12 +329,19 @@ class FilterEngine:
                 logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
                 return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
 
-        # ---- Phase A: Require freelance indicator (optional, disabled by default to match technical job postings) ----
-        require_freelance = os.getenv("REQUIRE_FREELANCE_INDICATOR", "false").lower() in ("true", "1", "yes")
-        if require_freelance:
+        # Dedicated freelance portals skip the mandatory keyword check (their postings are 100% freelance/ZZP)
+        freelance_portals = {
+            "Freelance.nl", "Striive.com", "BlueBeaver.nl", "Hoofdkraan.nl",
+            "Freelancenetwerk.nl", "Matchd",
+        }
+        is_dedicated_freelance = job.source in freelance_portals
+
+        # ---- Phase A: Require freelance / ZZP / interim indicator ----
+        require_freelance = os.getenv("REQUIRE_FREELANCE_INDICATOR", "true").lower() in ("true", "1", "yes")
+        if require_freelance and not is_dedicated_freelance:
             has_freelance_indicator = any(p.search(text) for p in self._include_re)
             if not has_freelance_indicator:
-                reason = "No freelance/ZZP indicator found"
+                reason = "Geen freelance/ZZP/interim indicator gevonden"
                 logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
                 return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
 

@@ -45,11 +45,13 @@ class FreelanceNLScraper(BaseScraper):
         }
 
         for target_url in FREELANCE_NL_CATEGORIES:
-            response = await self.safe_get(target_url, headers=headers)
-            if not response:
-                continue
+            for page in range(1, max(2, self.max_pages // 2 + 1)):
+                page_url = f"{target_url}?page={page}" if page > 1 else target_url
+                response = await self.safe_get(page_url, headers=headers)
+                if not response or response.status_code != 200:
+                    break
 
-            soup = BeautifulSoup(response.text, "html.parser")
+                soup = BeautifulSoup(response.text, "html.parser")
             # Parse links or cards
             for a in soup.find_all("a", href=True):
                 href = a["href"]

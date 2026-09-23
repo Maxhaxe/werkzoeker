@@ -34,11 +34,13 @@ class ContinuScraper(BaseScraper):
         all_items: dict[str, JobItem] = {}
 
         for target_url in CONTINU_URLS:
-            response = await self.safe_get(target_url)
-            if not response or response.status_code != 200:
-                continue
+            for page in range(1, max(2, self.max_pages // 2 + 1)):
+                page_url = f"{target_url}?page={page}" if page > 1 else target_url
+                response = await self.safe_get(page_url)
+                if not response or response.status_code != 200:
+                    break
 
-            soup = BeautifulSoup(response.text, "html.parser")
+                soup = BeautifulSoup(response.text, "html.parser")
             for a in soup.find_all("a", href=True):
                 href = a["href"]
                 if "/vacatures/" in href or "/vacature/" in href:
