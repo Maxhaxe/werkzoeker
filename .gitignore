@@ -1,0 +1,41 @@
+# Secrets & Config
+.env
+
+# Database (runtime data — gecached door GitHub Actions)
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime bot settings (worden gecached door GitHub Actions)
+bot_settings.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Playwright
+playwright/.local-browsers/

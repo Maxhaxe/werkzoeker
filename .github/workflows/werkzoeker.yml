@@ -1,0 +1,95 @@
+name: 🔍 WerkZoeker — Freelance Scan
+
+on:
+  # ── Automatisch schema ──────────────────────────────────────────────────
+  schedule:
+    # Elke 2 uur (past binnen free tier van GitHub Actions voor publieke repos)
+    # Pas aan naar wens: '0 * * * *' = elk uur, '*/30 * * * *' = elk half uur
+    - cron: '0 */2 * * *'
+
+  # ── Handmatige trigger (via GitHub UI of via /run commando) ────────────
+  workflow_dispatch:
+    inputs:
+      log_level:
+        description: 'Log niveau (DEBUG/INFO/WARNING)'
+        required: false
+        default: 'INFO'
+        type: choice
+        options: [DEBUG, INFO, WARNING]
+
+# Voorkom parallelle runs (deduplicatie werkt anders niet goed)
+concurrency:
+  group: werkzoeker-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Freelance Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ── 1. Code ophalen ───────────────────────────────────────────────
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Database herstellen (deduplicatie) ─────────────────────────
+      # De SQLite database wordt gecached tussen runs zodat duplicaten
+      # worden herkend en niet opnieuw worden verstuurd.
+      - name: 💾 Herstel database cache
+        uses: actions/cache@v4
+        with:
+          path: jobs.db
+          # Cache-sleutel met weeknummer: DB reset elke week automatisch
+          key: werkzoeker-db-${{ hashFiles('keywords.json') }}-week-${{ github.run_number }}
+          restore-keys: |
+            werkzoeker-db-${{ hashFiles('keywords.json') }}-week-
+            werkzoeker-db-
+
+      # ── 3. Bot instellingen herstellen (threshold etc.) ───────────────
+      - name: ⚙️ Herstel bot instellingen
+        uses: actions/cache@v4
+        with:
+          path: bot_settings.json
+          key: werkzoeker-settings-${{ github.run_number }}
+          restore-keys: werkzoeker-settings-
+
+      # ── 4. Python omgeving ────────────────────────────────────────────
+      - name: 🐍 Python 3.11 instellen
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Dependencies installeren
+        run: pip install -r requirements.txt
+
+      # ── 5. Scan uitvoeren ─────────────────────────────────────────────
+      - name: 🔍 Scan uitvoeren
+        env:
+          # Verplicht — zet in GitHub Secrets
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+
+          # Optioneel — of gebruik defaults
+          SCORE_THRESHOLD:          ${{ vars.SCORE_THRESHOLD || '6' }}
+          MAX_START_MONTHS_AHEAD:   ${{ vars.MAX_START_MONTHS_AHEAD || '6' }}
+          INCLUDE_UNKNOWN_START_DATE: ${{ vars.INCLUDE_UNKNOWN_START_DATE || 'true' }}
+          INCLUDE_ALREADY_STARTED:  ${{ vars.INCLUDE_ALREADY_STARTED || 'true' }}
+          MAX_PAGES_PER_SCRAPER:    ${{ vars.MAX_PAGES_PER_SCRAPER || '3' }}
+          RATE_LIMIT_DELAY:         '1.5'
+          REQUEST_TIMEOUT:          '30'
+          NOTIFY_CHANNELS:          'telegram'
+          KEYWORDS_FILE:            'keywords.json'
+          LOG_LEVEL: ${{ inputs.log_level || vars.LOG_LEVEL || 'INFO' }}
+        run: python main.py --run-once
+
+      # ── 6. Log opslaan als artifact (handige debugging) ───────────────
+      - name: 📋 Log opslaan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: werkzoeker-log-${{ github.run_number }}
+          path: werkzoeker.log
+          retention-days: 7
+          if-no-files-found: ignore

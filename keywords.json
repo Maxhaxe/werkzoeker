@@ -1,0 +1,103 @@
+{
+  "_info": "WerkZoeker — Keyword Configuration. Edit this file to customise scoring.",
+  "_scoring": "Points per match. Higher = more relevant. Threshold to pass filter: see SCORE_THRESHOLD in .env (default: 6).",
+
+  "roles": {
+    "detail engineer": 3,
+    "detail engineering": 3,
+    "lead engineer": 3,
+    "senior engineer": 3,
+    "e-engineer": 3,
+    "elektrotechnisch engineer": 3,
+    "electrical engineer": 3,
+    "hardware engineer": 3,
+    "werkvoorbereider e": 3,
+    "werkvoorbereider elektrotechniek": 3,
+    "instrumentatie engineer": 3,
+    "installatie engineer": 3,
+    "project engineer": 2,
+    "technisch tekenaar": 2,
+    "tekenaar": 2
+  },
+
+  "domains": {
+    "hoogspanning": 3,
+    "hoog spanning": 3,
+    "middenspanning": 3,
+    "midden spanning": 3,
+    "laagspanning": 3,
+    "laag spanning": 3,
+    "onderstations": 3,
+    "onderstation": 3,
+    "transformatorstations": 3,
+    "transformatorstation": 3,
+    "transformatoren": 2,
+    "verdeelinrichtingen": 3,
+    "verdeelinrichting": 3,
+    "schakelinstallaties": 3,
+    "schakelinstallatie": 3,
+    "utiliteit": 3,
+    "utiliteitsbouw": 3,
+    "netinfrastructuur": 3,
+    "netwerk infrastructuur": 3,
+    "kabelberekeningen": 3,
+    "kabelberekening": 3,
+    "kortsluitingsberekening": 3,
+    "vermogenssystemen": 2,
+    "energiecentrale": 2,
+    "elektrotechniek": 2,
+    "elektrotechnisch": 2,
+    "installatietechniek": 2,
+    "installatietechnisch": 2
+  },
+
+  "tools": {
+    "eplan": 4,
+    "eplan electric p8": 4,
+    "eplan pro panel": 4,
+    "autocad": 4,
+    "autocad electrical": 4,
+    "revit": 4,
+    "revit mep": 4,
+    "vision": 4,
+    "dialux": 4,
+    "dialux evo": 4,
+    "caneco": 4,
+    "caneco bt": 4,
+    "relux": 3,
+    "etap": 3,
+    "digsilent": 3,
+    "pscad": 3
+  },
+
+  "norms": {
+    "nen 1010": 2,
+    "nen1010": 2,
+    "nen 3140": 2,
+    "nen3140": 2,
+    "nen 3840": 2,
+    "nen3840": 2,
+    "iec 61850": 2,
+    "iec61850": 2,
+    "nen 3000": 2,
+    "nen3000": 2,
+    "atex": 2,
+    "ip-klasse": 1,
+    "veiligheidsklasse": 1
+  },
+
+  "custom": {
+    "_comment": "Add your own keywords here. Format: 'trefwoord': punten",
+    "examples_remove_this": {
+      "scada": 3,
+      "plc programmeren": 3,
+      "substation automation": 4
+    }
+  },
+
+  "disabled": [
+    "_comment: Add keywords here to disable them (exact match with keys above)",
+    "tekenaar",
+    "vision"
+  ]
+}
