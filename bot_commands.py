@@ -312,9 +312,9 @@ class TelegramCommandHandler:
         await self._send(full_text)
 
     async def _cmd_platformen(self, _args: str) -> None:
-        """Show all 10 supported job platforms."""
+        """Show all 20 supported job platforms."""
         await self._send(
-            "🌐 <b>Ondersteunde Databronnen &amp; Platformen</b> (10 totaal)\n\n"
+            "🌐 <b>Ondersteunde Databronnen &amp; Platformen</b> (20 totaal)\n\n"
             "1️⃣ <b>Freelance.nl</b> — Freelance opdrachten &amp; projecten\n"
             "2️⃣ <b>Striive.com</b> — Interim &amp; freelance marktplaats\n"
             "3️⃣ <b>Werkzoeken.nl</b> — Vacatures &amp; ZZP opdrachten\n"
@@ -324,8 +324,18 @@ class TelegramCommandHandler:
             "7️⃣ <b>VNOM.nl</b> — Bemiddeling in techniek &amp; ZZP\n"
             "8️⃣ <b>Hoofdkraan.nl</b> — ZZP &amp; Freelance marktplaats\n"
             "9️⃣ <b>Freelancenetwerk.nl</b> — Freelance opdrachten netwerk\n"
-            "🔟 <b>Indeed NL</b> — Aggregator vacatures\n\n"
-            "<i>De bot scant al deze 10 bronnen automatisch en filtert op relevante technische trefwoorden.</i>"
+            "🔟 <b>Indeed NL</b> — Aggregator vacatures\n"
+            "1️⃣1️⃣ <b>Continu Professionals</b> — Engineering &amp; Elektrotechniek\n"
+            "1️⃣2️⃣ <b>Maintec</b> — Technische vacatures &amp; detachering\n"
+            "1️⃣3️⃣ <b>Technical Valley</b> — Energietechniek &amp; Elektrotechniek\n"
+            "1️⃣4️⃣ <b>Matchd</b> — Interim &amp; ZZP opdrachten / Engineering\n"
+            "1️⃣5️⃣ <b>Randstad Techniek</b> — Vacatures Techniek &amp; Elektro\n"
+            "1️⃣6️⃣ <b>Tempo-Team Techniek</b> — Techniek &amp; Installatie vacatures\n"
+            "1️⃣7️⃣ <b>Synsel Techniek</b> — Elektrotechniek &amp; Automatisering\n"
+            "1️⃣8️⃣ <b>Covebo Techniek</b> — Technische vacatures &amp; montage\n"
+            "1️⃣9️⃣ <b>Werken bij Heijmans</b> — Energie &amp; Infrastructuur\n"
+            "2️⃣0️⃣ <b>WtbE Engineering</b> — Engineering &amp; Maintenance consultancy\n\n"
+            "<i>De bot scant al deze 20 bronnen automatisch en filtert op relevante technische trefwoorden.</i>"
         )
 
     async def _cmd_start(self, args: str) -> None:

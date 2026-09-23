@@ -39,3 +39,6 @@ logs/
 
 # Playwright
 playwright/.local-browsers/
+
+# Scratch scripts
+scratch_*.py

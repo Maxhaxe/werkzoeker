@@ -14,6 +14,17 @@ from .vnom import VNOMScraper
 from .hoofdkraan import HoofdkraanScraper
 from .freelancenetwerk import FreelancenetwerkScraper
 
+from .continu import ContinuScraper
+from .maintec import MaintecScraper
+from .technicalvalley import TechnicalValleyScraper
+from .matchd import MatchdScraper
+from .randstadtechniek import RandstadTechniekScraper
+from .tempoteam import TempoTeamScraper
+from .synsel import SynselScraper
+from .covebo import CoveboScraper
+from .heijmans import HeijmansScraper
+from .wtbe import WtbEScraper
+
 __all__ = [
     "BaseScraper",
     "JobItem",
@@ -27,4 +38,14 @@ __all__ = [
     "VNOMScraper",
     "HoofdkraanScraper",
     "FreelancenetwerkScraper",
+    "ContinuScraper",
+    "MaintecScraper",
+    "TechnicalValleyScraper",
+    "MatchdScraper",
+    "RandstadTechniekScraper",
+    "TempoTeamScraper",
+    "SynselScraper",
+    "CoveboScraper",
+    "HeijmansScraper",
+    "WtbEScraper",
 ]

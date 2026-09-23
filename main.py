@@ -39,6 +39,16 @@ from scrapers import (
     VNOMScraper,
     HoofdkraanScraper,
     FreelancenetwerkScraper,
+    ContinuScraper,
+    MaintecScraper,
+    TechnicalValleyScraper,
+    MatchdScraper,
+    RandstadTechniekScraper,
+    TempoTeamScraper,
+    SynselScraper,
+    CoveboScraper,
+    HeijmansScraper,
+    WtbEScraper,
 )
 from filter_engine import FilterEngine, show_keywords
 from storage import Storage
@@ -82,11 +92,11 @@ def configure_logging() -> None:
 # ---------------------------------------------------------------------------
 
 def get_scrapers(max_pages: int, rate_limit: float, timeout: float) -> list:
-    """Return all active scraper instances (10 sources)."""
+    """Return all active scraper instances (20 sources)."""
     common = dict(max_pages=max_pages, rate_limit_delay=rate_limit, timeout=timeout)
     rss_only = dict(rate_limit_delay=rate_limit, timeout=timeout)
     return [
-        # RSS feeds & HTML scrapers
+        # RSS feeds & HTML scrapers (20 platforms total)
         FreelanceNLScraper(**rss_only),
         IndeedRSSScraper(**rss_only),
         TechnischeVacaturebankScraper(**rss_only),
@@ -97,6 +107,16 @@ def get_scrapers(max_pages: int, rate_limit: float, timeout: float) -> list:
         VNOMScraper(**common),
         HoofdkraanScraper(**common),
         FreelancenetwerkScraper(**common),
+        ContinuScraper(**common),
+        MaintecScraper(**common),
+        TechnicalValleyScraper(**common),
+        MatchdScraper(**common),
+        RandstadTechniekScraper(**common),
+        TempoTeamScraper(**common),
+        SynselScraper(**common),
+        CoveboScraper(**common),
+        HeijmansScraper(**common),
+        WtbEScraper(**common),
     ]
 
 
