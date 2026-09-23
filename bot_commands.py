@@ -165,13 +165,23 @@ class TelegramCommandHandler:
             self._offset = updates[-1]["update_id"] + 1
         return updates
 
-    async def _send(self, text: str, parse_mode: str = "HTML") -> None:
-        """Send a reply to the configured chat."""
+    @property
+    def allowed_chat_ids(self) -> list[str]:
+        raw = self.chat_id
+        return [cid.strip() for cid in raw.split(",") if cid.strip()]
+
+    async def _send(self, text: str, parse_mode: str = "HTML", reply_chat_id: str | None = None) -> None:
+        """Send a reply to the specified chat or active chat."""
+        target_chat = reply_chat_id or getattr(self, "_active_chat_id", None) or self.chat_id
+        # If multiple IDs in self.chat_id, pick the first if target_chat contains comma
+        if "," in target_chat:
+            target_chat = target_chat.split(",")[0].strip()
+
         try:
             await self._client.post(
                 f"{self._api}/sendMessage",
                 json={
-                    "chat_id": self.chat_id,
+                    "chat_id": target_chat,
                     "text": text,
                     "parse_mode": parse_mode,
                     "disable_web_page_preview": True,
@@ -179,26 +189,32 @@ class TelegramCommandHandler:
                 timeout=10,
             )
         except Exception as e:
-            logger.warning(f"[Bot] Failed to send reply: {e}")
+            logger.warning(f"[Bot] Failed to send reply to chat {target_chat}: {e}")
 
     # -----------------------------------------------------------------------
     # Update Dispatcher
     # -----------------------------------------------------------------------
 
     async def _handle_update(self, update: dict) -> None:
-        msg = update.get("message", {})
+        msg = update.get("message", {}) or update.get("channel_post", {})
         text = (msg.get("text") or "").strip()
         chat_id = str(msg.get("chat", {}).get("id", ""))
+        chat_type = msg.get("chat", {}).get("type", "private")
 
         if not text or not chat_id:
             return
 
-        # Security: only respond to the configured chat
-        if chat_id != str(self.chat_id):
-            logger.debug(f"[Bot] Ignored message from unauthorized chat {chat_id}")
+        # Security check: allowed if chat_id in TELEGRAM_CHAT_ID list, OR if it's a group chat and ALLOW_GROUPS=true
+        allow_all_groups = os.getenv("ALLOW_GROUPS", "true").lower() in ("true", "1", "yes")
+        is_allowed = (chat_id in self.allowed_chat_ids) or (allow_all_groups and chat_type in ("group", "supergroup"))
+
+        if not is_allowed:
+            logger.debug(f"[Bot] Ignored message from unauthorized chat {chat_id} (type={chat_type})")
             return
 
-        logger.info(f"[Bot] Command received: '{text}'")
+        # Store active chat ID so replies go to the exact group/chat that issued the command
+        self._active_chat_id = chat_id
+        logger.info(f"[Bot] Command received in {chat_type} ({chat_id}): '{text}'")
 
         # Parse command
         parts  = text.split(None, 1)

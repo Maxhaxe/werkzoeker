@@ -203,52 +203,60 @@ class TelegramNotifier:
             self._client = None
 
     async def _send_with_retry(self, job_id: str, text: str) -> NotifyResult:
-        """Send a message with exponential backoff on failure."""
+        """Send a message with exponential backoff on failure, supporting multiple chat IDs."""
         client = self._client
         own_client = False
         if client is None:
             client = httpx.AsyncClient(timeout=15.0)
             own_client = True
 
+        chat_ids = [c.strip() for c in self.chat_id.split(",") if c.strip()]
+        any_success = False
+        last_error = None
+
         try:
-            for attempt in range(1, MAX_RETRIES + 1):
-                try:
-                    response = await client.post(
-                        self._api_url,
-                        json={
-                            "chat_id": self.chat_id,
-                            "text": text,
-                            "parse_mode": "MarkdownV2",
-                            "disable_web_page_preview": False,
-                        },
-                    )
-                    data = response.json()
+            for target_chat in chat_ids:
+                for attempt in range(1, MAX_RETRIES + 1):
+                    try:
+                        response = await client.post(
+                            self._api_url,
+                            json={
+                                "chat_id": target_chat,
+                                "text": text,
+                                "parse_mode": "MarkdownV2",
+                                "disable_web_page_preview": False,
+                            },
+                        )
+                        data = response.json()
 
-                    if response.status_code == 200 and data.get("ok"):
-                        await asyncio.sleep(MESSAGE_DELAY_SECONDS)
-                        return NotifyResult(success=True, job_id=job_id)
+                        if response.status_code == 200 and data.get("ok"):
+                            await asyncio.sleep(MESSAGE_DELAY_SECONDS)
+                            any_success = True
+                            break
 
-                    if response.status_code == 429:
-                        retry_after = data.get("parameters", {}).get("retry_after", 5)
-                        logger.warning(f"[Notifier] Rate limited — waiting {retry_after}s")
-                        await asyncio.sleep(retry_after)
-                        continue
+                        if response.status_code == 429:
+                            retry_after = data.get("parameters", {}).get("retry_after", 5)
+                            logger.warning(f"[Notifier] Rate limited — waiting {retry_after}s")
+                            await asyncio.sleep(retry_after)
+                            continue
 
-                    error_desc = data.get("description", str(data))
-                    logger.warning(
-                        f"[Notifier] API error (attempt {attempt}/{MAX_RETRIES}): "
-                        f"{response.status_code} — {error_desc}"
-                    )
+                        error_desc = data.get("description", str(data))
+                        last_error = f"{response.status_code} — {error_desc}"
+                        logger.warning(
+                            f"[Notifier] API error for {target_chat} (attempt {attempt}/{MAX_RETRIES}): {last_error}"
+                        )
 
-                except httpx.RequestError as e:
-                    logger.warning(f"[Notifier] Request error (attempt {attempt}/{MAX_RETRIES}): {e}")
+                    except httpx.RequestError as e:
+                        last_error = str(e)
+                        logger.warning(f"[Notifier] Request error for {target_chat} (attempt {attempt}/{MAX_RETRIES}): {e}")
 
-                if attempt < MAX_RETRIES:
-                    await asyncio.sleep(RETRY_BACKOFF_BASE ** attempt)
+                    if attempt < MAX_RETRIES:
+                        await asyncio.sleep(RETRY_BACKOFF_BASE ** attempt)
 
-            error_msg = f"Failed after {MAX_RETRIES} attempts"
-            logger.error(f"[Notifier] {error_msg} for job {job_id}")
-            return NotifyResult(success=False, job_id=job_id, error=error_msg)
+            if any_success:
+                return NotifyResult(success=True, job_id=job_id)
+            else:
+                return NotifyResult(success=False, job_id=job_id, error=last_error or f"Failed after {MAX_RETRIES} attempts")
         finally:
             if own_client:
                 await client.aclose()
