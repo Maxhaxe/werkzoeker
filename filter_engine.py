@@ -116,27 +116,21 @@ def load_keywords(keywords_file: str | None = None) -> dict[str, int]:
             with open(path, encoding="utf-8") as f:
                 data: dict[str, Any] = json.load(f)
 
-            # Load standard categories
-            for category in ("roles", "domains", "tools", "norms"):
-                section = data.get(category, {})
+            # Load all categories dynamically (roles, domains, tools, norms, custom, etc.)
+            for category, section in data.items():
+                if category.startswith("_") or category == "disabled":
+                    continue
                 if isinstance(section, dict):
-                    for kw, pts in section.items():
-                        if not kw.startswith("_") and isinstance(pts, (int, float)):
-                            keywords[kw.lower().strip()] = int(pts)
-
-            # Load custom section (may be nested one level deep)
-            custom = data.get("custom", {})
-            if isinstance(custom, dict):
-                for key, val in custom.items():
-                    if key.startswith("_"):
-                        continue
-                    if isinstance(val, dict):
-                        # Nested sub-group (like examples_remove_this)
-                        for kw, pts in val.items():
-                            if not kw.startswith("_") and isinstance(pts, (int, float)):
-                                keywords[kw.lower().strip()] = int(pts)
-                    elif isinstance(val, (int, float)):
-                        keywords[key.lower().strip()] = int(val)
+                    for key, val in section.items():
+                        if key.startswith("_"):
+                            continue
+                        if isinstance(val, dict):
+                            # Nested sub-group
+                            for kw, pts in val.items():
+                                if not kw.startswith("_") and isinstance(pts, (int, float)):
+                                    keywords[kw.lower().strip()] = int(pts)
+                        elif isinstance(val, (int, float)):
+                            keywords[key.lower().strip()] = int(val)
 
             # Load disabled list
             for item in data.get("disabled", []):
@@ -335,12 +329,14 @@ class FilterEngine:
                 logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
                 return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
 
-        # ---- Phase A: Require freelance indicator ----
-        has_freelance_indicator = any(p.search(text) for p in self._include_re)
-        if not has_freelance_indicator:
-            reason = "No freelance/ZZP indicator found"
-            logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
-            return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
+        # ---- Phase A: Require freelance indicator (optional, disabled by default to match technical job postings) ----
+        require_freelance = os.getenv("REQUIRE_FREELANCE_INDICATOR", "false").lower() in ("true", "1", "yes")
+        if require_freelance:
+            has_freelance_indicator = any(p.search(text) for p in self._include_re)
+            if not has_freelance_indicator:
+                reason = "No freelance/ZZP indicator found"
+                logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
+                return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
 
         # ---- Phase B: Technical scoring ----
         score = 0
