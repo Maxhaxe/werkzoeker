@@ -122,15 +122,6 @@ async def run_pipeline() -> dict:
         "started_at": datetime.utcnow().isoformat(),
     }
 
-    # 0. Process pending Telegram commands sent to the bot before starting the scan
-    try:
-        handler = TelegramCommandHandler(run_pipeline_fn=run_pipeline)
-        processed = await handler.process_pending_updates()
-        if processed > 0:
-            logger.info(f"[Bot] Processed {processed} pending Telegram command(s) before scan")
-    except Exception as e:
-        logger.warning(f"[Bot] Could not process pending commands: {e}")
-
     # 1. Scrape all sources
     all_jobs: list[JobItem] = []
     for scraper in scrapers:

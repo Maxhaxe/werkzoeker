@@ -530,6 +530,11 @@ class TelegramCommandHandler:
             await self._send("❌ Scanfunctie niet beschikbaar.")
             return
 
+        if getattr(self, "_is_scanning", False):
+            await self._send("⚠️ <b>Er draait momenteel al een scan!</b>\nEven geduld a.u.b., je krijgt bericht zodra deze klaar is.")
+            return
+
+        self._is_scanning = True
         await self._send("🔄 <b>Scan gestart…</b>\nIk stuur je de resultaten zodra ik klaar ben.")
         logger.info("[Bot] Manual scan triggered via Telegram")
 
@@ -546,6 +551,8 @@ class TelegramCommandHandler:
         except Exception as e:
             logger.error(f"[Bot] Manual scan failed: {e}", exc_info=True)
             await self._send(f"❌ Scan mislukt: {e}")
+        finally:
+            self._is_scanning = False
 
     # -----------------------------------------------------------------------
     # keywords.json helpers
