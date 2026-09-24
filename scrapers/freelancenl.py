@@ -52,30 +52,33 @@ class FreelanceNLScraper(BaseScraper):
                     break
 
                 soup = BeautifulSoup(response.text, "html.parser")
-            # Parse links or cards
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if "/opdracht/" in href or "/opdrachten/" in href:
-                    if href.count("/") <= 2 or href.endswith("/opdrachten"):
-                        continue
-                    url = urljoin("https://www.freelance.nl", href)
-                    title = self.clean_text(a.get_text())
-                    if not title or len(title) < 5 or title.lower() in ("bekijk opdrachten", "opdrachten", "lees meer"):
-                        continue
+                found = 0
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    if "/opdracht/" in href or "/opdrachten/" in href:
+                        if href.count("/") <= 2 or href.endswith("/opdrachten"):
+                            continue
+                        url = urljoin("https://www.freelance.nl", href)
+                        title = self.clean_text(a.get_text())
+                        if not title or len(title) < 5 or title.lower() in ("bekijk opdrachten", "opdrachten", "lees meer"):
+                            continue
 
-                    job_id = self.make_id(url)
-                    if job_id not in all_items:
-                        all_items[job_id] = JobItem(
-                            id=job_id,
-                            title=title,
-                            source=self.SOURCE_NAME,
-                            url=url,
-                            description=f"{title} — Freelance.nl ZZP opdracht",
-                            rate_or_hours=self._extract_rate(title),
-                            published_at=datetime.utcnow(),
-                        )
+                        job_id = self.make_id(url)
+                        if job_id not in all_items:
+                            found += 1
+                            all_items[job_id] = JobItem(
+                                id=job_id,
+                                title=title,
+                                source=self.SOURCE_NAME,
+                                url=url,
+                                description=f"{title} — Freelance.nl ZZP opdracht",
+                                rate_or_hours=self._extract_rate(title),
+                                published_at=datetime.utcnow(),
+                            )
 
-            await asyncio.sleep(self.rate_limit_delay)
+                if found == 0:
+                    break
+                await asyncio.sleep(self.rate_limit_delay)
 
         results = list(all_items.values())
         logger.info(f"[{self.SOURCE_NAME}] Found {len(results)} unique jobs")

@@ -19,8 +19,12 @@ from .freelancenl import FreelanceNLScraper
 
 DOSIGN_URLS = [
     "https://www.dosign.nl/discipline/elektrotechniek/vacatures",
+    "https://www.dosign.nl/discipline/installatietechniek/vacatures",
+    "https://www.dosign.nl/discipline/automatisering/vacatures",
+    "https://www.dosign.nl/discipline/constructie/vacatures",
     "https://www.dosign.nl/branche/utiliteitsbouw/vacatures",
     "https://www.dosign.nl/branche/duurzame-energie/vacatures",
+    "https://www.dosign.nl/branche/high-tech/vacatures",
     "https://www.dosign.nl/vacatures",
 ]
 

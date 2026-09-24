@@ -20,10 +20,24 @@ SEARCH_URL = "https://www.werkzoeken.nl/vacatures/"
 
 SEARCH_QUERIES = [
     "elektrotechniek",
-    "engineer",
+    "engineer e-installaties",
+    "e-engineer",
+    "electrical engineer",
+    "ontwerptechnicus",
+    "modelleur",
+    "projectengineer",
+    "senior engineer",
+    "werkvoorbereider elektrotechniek",
     "eplan",
-    "hoogspanning",
-    "werkvoorbereider",
+    "autocad",
+    "bim",
+    "gebouwgebonden",
+    "lichtberekeningen",
+    "brandmeld",
+    "gbs",
+    "zzp elektrotechniek",
+    "freelance engineer",
+    "interim engineer",
 ]
 
 
@@ -53,27 +67,31 @@ class WerkzoekenScraper(BaseScraper):
                     break
 
                 soup = BeautifulSoup(response.text, "html.parser")
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if "/vacature/" in href:
-                    url = urljoin("https://www.werkzoeken.nl", href)
-                    title = self.clean_text(a.get_text())
-                    if not title or len(title) < 5 or title.lower() in ("bekijk vacature", "vacatures", "solliciteer"):
-                        continue
+                found = 0
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    if "/vacature/" in href:
+                        url = urljoin("https://www.werkzoeken.nl", href)
+                        title = self.clean_text(a.get_text())
+                        if not title or len(title) < 5 or title.lower() in ("bekijk vacature", "vacatures", "solliciteer"):
+                            continue
 
-                    job_id = self.make_id(url)
-                    if job_id not in all_items:
-                        all_items[job_id] = JobItem(
-                            id=job_id,
-                            title=title,
-                            source=self.SOURCE_NAME,
-                            url=url,
-                            description=f"{title} — Vacature/opdracht bij Werkzoeken.nl",
-                            rate_or_hours=FreelanceNLScraper._extract_rate(title),
-                            published_at=datetime.utcnow(),
-                        )
+                        job_id = self.make_id(url)
+                        if job_id not in all_items:
+                            found += 1
+                            all_items[job_id] = JobItem(
+                                id=job_id,
+                                title=title,
+                                source=self.SOURCE_NAME,
+                                url=url,
+                                description=f"{title} — Vacature/opdracht bij Werkzoeken.nl",
+                                rate_or_hours=FreelanceNLScraper._extract_rate(title),
+                                published_at=datetime.utcnow(),
+                            )
 
-            await asyncio.sleep(self.rate_limit_delay)
+                if found == 0:
+                    break
+                await asyncio.sleep(self.rate_limit_delay)
 
         results = list(all_items.values())
         logger.info(f"[{self.SOURCE_NAME}] Found {len(results)} unique jobs")

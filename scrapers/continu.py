@@ -41,26 +41,30 @@ class ContinuScraper(BaseScraper):
                     break
 
                 soup = BeautifulSoup(response.text, "html.parser")
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if "/vacatures/" in href or "/vacature/" in href:
-                    url = urljoin("https://www.continu.nl", href)
-                    title = self.clean_text(a.get_text())
-                    if not title or len(title) < 5 or title.lower() in ("vacatures", "bekijk vacature", "lees meer"):
-                        continue
+                found = 0
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    if "/vacatures/" in href or "/vacature/" in href:
+                        url = urljoin("https://www.continu.nl", href)
+                        title = self.clean_text(a.get_text())
+                        if not title or len(title) < 5 or title.lower() in ("vacatures", "bekijk vacature", "lees meer"):
+                            continue
 
-                    job_id = self.make_id(url)
-                    if job_id not in all_items:
-                        all_items[job_id] = JobItem(
-                            id=job_id,
-                            title=title,
-                            source=self.SOURCE_NAME,
-                            url=url,
-                            description=f"{title} — Engineering / Elektrotechniek vacature bij Continu Professionals",
-                            published_at=datetime.utcnow(),
-                        )
+                        job_id = self.make_id(url)
+                        if job_id not in all_items:
+                            found += 1
+                            all_items[job_id] = JobItem(
+                                id=job_id,
+                                title=title,
+                                source=self.SOURCE_NAME,
+                                url=url,
+                                description=f"{title} — Engineering / Elektrotechniek vacature bij Continu Professionals",
+                                published_at=datetime.utcnow(),
+                            )
 
-            await asyncio.sleep(self.rate_limit_delay)
+                if found == 0:
+                    break
+                await asyncio.sleep(self.rate_limit_delay)
 
         results = list(all_items.values())
         logger.info(f"[{self.SOURCE_NAME}] Found {len(results)} unique jobs")

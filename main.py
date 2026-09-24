@@ -145,17 +145,24 @@ async def run_pipeline() -> dict:
         "started_at": datetime.utcnow().isoformat(),
     }
 
-    # 1. Scrape all sources
+    # 1. Scrape all sources concurrently
     all_jobs: list[JobItem] = []
-    for scraper in scrapers:
+
+    async def _run_single_scraper(scr):
         try:
-            async with scraper:
-                jobs = await scraper.fetch_jobs()
-                all_jobs.extend(jobs)
-                logger.info(f"[{scraper.SOURCE_NAME}] → {len(jobs)} jobs scraped")
+            async with scr:
+                jobs = await scr.fetch_jobs()
+                logger.info(f"[{scr.SOURCE_NAME}] → {len(jobs)} jobs scraped")
+                return jobs
         except Exception as exc:
-            logger.error(f"[{scraper.SOURCE_NAME}] Scraper crashed: {exc}", exc_info=True)
+            logger.error(f"[{scr.SOURCE_NAME}] Scraper crashed: {exc}")
             stats["errors"] += 1
+            return []
+
+    results = await asyncio.gather(*[_run_single_scraper(s) for s in scrapers], return_exceptions=True)
+    for res in results:
+        if isinstance(res, list):
+            all_jobs.extend(res)
 
     stats["scraped"] = len(all_jobs)
     logger.info(f"Total scraped: {len(all_jobs)} jobs across all sources")

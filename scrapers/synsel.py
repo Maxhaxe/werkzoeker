@@ -19,6 +19,9 @@ from .base import BaseScraper, JobItem
 SYNSEL_URLS = [
     "https://www.synsel.nl/vacatures",
     "https://www.synsel.nl/vacatures?specialismen=field-service-engineers",
+    "https://www.synsel.nl/vacatures?specialismen=mechanical-engineers",
+    "https://www.synsel.nl/vacatures?specialismen=software-engineers",
+    "https://www.synsel.nl/vacatures?specialismen=installatietechniek",
 ]
 
 
