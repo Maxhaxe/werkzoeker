@@ -1,0 +1,21 @@
+services:
+  - type: worker
+    name: werkzoeker-bot
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py --listen
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: MAX_PAGES_PER_SCRAPER
+        value: "50"
+      - key: SCORE_THRESHOLD
+        value: "3"
+      - key: REQUIRE_FREELANCE_INDICATOR
+        value: "true"
+      - key: LOG_LEVEL
+        value: "INFO"
