@@ -71,17 +71,17 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
 
-          # Optioneel — of gebruik defaults
-          SCORE_THRESHOLD:            ${{ vars.SCORE_THRESHOLD || '3' }}
-          MAX_START_MONTHS_AHEAD:     ${{ vars.MAX_START_MONTHS_AHEAD || '6' }}
-          INCLUDE_UNKNOWN_START_DATE: ${{ vars.INCLUDE_UNKNOWN_START_DATE || 'true' }}
-          INCLUDE_ALREADY_STARTED:    ${{ vars.INCLUDE_ALREADY_STARTED || 'true' }}
-          MAX_PAGES_PER_SCRAPER:      ${{ vars.MAX_PAGES_PER_SCRAPER || '50' }}
+          # Instellingen & Omgevingsvariabelen
+          SCORE_THRESHOLD:            '3'
+          MAX_START_MONTHS_AHEAD:     '6'
+          INCLUDE_UNKNOWN_START_DATE: 'true'
+          INCLUDE_ALREADY_STARTED:    'true'
+          MAX_PAGES_PER_SCRAPER:      '50'
           RATE_LIMIT_DELAY:           '1.0'
           REQUEST_TIMEOUT:            '30'
           NOTIFY_CHANNELS:            'telegram'
           KEYWORDS_FILE:              'keywords.json'
-          LOG_LEVEL:                  ${{ inputs.log_level || vars.LOG_LEVEL || 'INFO' }}
+          LOG_LEVEL:                  ${{ inputs.log_level || 'INFO' }}
         run: python main.py --run-once
 
       # ── 6. Log opslaan als artifact (handige debugging) ───────────────
