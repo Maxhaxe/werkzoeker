@@ -12,6 +12,7 @@ import os
 from datetime import datetime
 from urllib.parse import urljoin
 
+import httpx
 from loguru import logger
 
 from .base import BaseScraper, JobItem
@@ -26,7 +27,7 @@ class StriiveScraper(BaseScraper):
 
     SOURCE_NAME = "Striive.com"
 
-    def __init__(self, max_pages: int = 20, **kwargs):
+    def __init__(self, max_pages: int = 25, **kwargs):
         super().__init__(**kwargs)
         self.max_pages = max_pages
 
@@ -38,71 +39,78 @@ class StriiveScraper(BaseScraper):
             "Accept": "application/json",
         }
 
-        # Fetch pages up to max_pages (50 jobs per page)
-        for page in range(1, self.max_pages + 1):
-            url = f"{API_URL}?limit=50&page={page}"
-            response = await self.safe_get(url, headers=headers)
-            if not response or response.status_code != 200:
-                break
+        # Dedicated HTTP/1.1 client with verify=False for resilient TLS connection
+        async with httpx.AsyncClient(
+            headers=headers,
+            timeout=15.0,
+            verify=False,
+            http2=False,
+            follow_redirects=True,
+        ) as client:
+            for page in range(1, self.max_pages + 1):
+                url = f"{API_URL}?limit=50&page={page}"
+                try:
+                    r = await client.get(url)
+                    if r.status_code != 200:
+                        break
+                    data = r.json()
+                except Exception as e:
+                    logger.warning(f"[{self.SOURCE_NAME}] API error on page {page}: {e}")
+                    break
 
-            try:
-                data = response.json()
-            except Exception:
-                break
+                job_list = data.get("data", [])
+                if not job_list:
+                    break
 
-            job_list = data.get("data", [])
-            if not job_list:
-                break
+                for raw in job_list:
+                    title = self.clean_text(raw.get("title", ""))
+                    slug = raw.get("titleSlug", "")
+                    raw_id = raw.get("id", "")
+                    if not title or not raw_id:
+                        continue
 
-            for raw in job_list:
-                title = self.clean_text(raw.get("title", ""))
-                slug = raw.get("titleSlug", "")
-                raw_id = raw.get("id", "")
-                if not title or not raw_id:
-                    continue
+                    url = f"https://www.striive.com/opdracht/{slug}-{raw_id}" if slug else f"https://www.striive.com/opdrachten/{raw_id}"
+                    job_id = self.make_id(url)
 
-                url = f"https://www.striive.com/opdracht/{slug}-{raw_id}" if slug else f"https://www.striive.com/opdrachten/{raw_id}"
-                job_id = self.make_id(url)
+                    if job_id in all_items:
+                        continue
 
-                if job_id in all_items:
-                    continue
+                    # Location & Rate info
+                    city = raw.get("workSiteCity") or raw.get("location") or ""
+                    rate_min = raw.get("hourlyRateMin")
+                    rate_max = raw.get("hourlyRateMax")
+                    rate_str = None
+                    if rate_min and rate_max:
+                        rate_str = f"€{rate_min}-€{rate_max}/uur"
+                    elif rate_min:
+                        rate_str = f"€{rate_min}/uur"
 
-                # Location & Rate info
-                city = raw.get("workSiteCity") or raw.get("location") or ""
-                rate_min = raw.get("hourlyRateMin")
-                rate_max = raw.get("hourlyRateMax")
-                rate_str = None
-                if rate_min and rate_max:
-                    rate_str = f"€{rate_min}-€{rate_max}/uur"
-                elif rate_min:
-                    rate_str = f"€{rate_min}/uur"
+                    # Description / Content
+                    content = raw.get("content") or title
+                    clean_desc = self.clean_text(content)
 
-                # Description / Content
-                content = raw.get("content") or title
-                clean_desc = self.clean_text(content)
+                    # Published date
+                    pub_date = datetime.utcnow()
+                    created_at = raw.get("publishedDate") or raw.get("createdAt")
+                    if created_at:
+                        try:
+                            from dateutil import parser as dateutil_parser
+                            pub_date = dateutil_parser.parse(created_at).replace(tzinfo=None)
+                        except Exception:
+                            pass
 
-                # Published date
-                pub_date = datetime.utcnow()
-                created_at = raw.get("publishedDate") or raw.get("createdAt")
-                if created_at:
-                    try:
-                        from dateutil import parser as dateutil_parser
-                        pub_date = dateutil_parser.parse(created_at).replace(tzinfo=None)
-                    except Exception:
-                        pass
+                    all_items[job_id] = JobItem(
+                        id=job_id,
+                        title=title,
+                        source=self.SOURCE_NAME,
+                        url=url,
+                        description=clean_desc,
+                        location=city if city else None,
+                        rate_or_hours=rate_str,
+                        published_at=pub_date,
+                    )
 
-                all_items[job_id] = JobItem(
-                    id=job_id,
-                    title=title,
-                    source=self.SOURCE_NAME,
-                    url=url,
-                    description=clean_desc,
-                    location=city if city else None,
-                    rate_or_hours=rate_str,
-                    published_at=pub_date,
-                )
-
-            await asyncio.sleep(self.rate_limit_delay)
+                await asyncio.sleep(self.rate_limit_delay)
 
         results = list(all_items.values())
         logger.info(f"[{self.SOURCE_NAME}] Found {len(results)} unique jobs via API")
