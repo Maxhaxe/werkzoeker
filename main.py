@@ -179,6 +179,7 @@ async def run_pipeline() -> dict:
             passed.append((job, result.score, result.matched_keywords))
 
     stats["passed_filter"] = len(passed)
+    stats["passed_jobs"] = [(job, score) for job, score, _ in passed]
     logger.info(f"Filter: {len(passed)}/{len(all_jobs)} jobs passed (threshold={engine.score_threshold})")
 
     if not passed:

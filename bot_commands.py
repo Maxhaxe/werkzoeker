@@ -607,14 +607,39 @@ class TelegramCommandHandler:
         async def _async_scan():
             try:
                 stats = await self._run_pipeline()
-                await self._send(
-                    f"✅ <b>Scan voltooid!</b>\n\n"
-                    f"📋 Gescand: {stats.get('scraped', 0)} vacatures\n"
-                    f"🎯 Gefilterd: {stats.get('passed_filter', 0)} matches\n"
-                    f"🆕 Nieuw: {stats.get('new_jobs', 0)}\n"
-                    f"📨 Verstuurd: {stats.get('notified', 0)}\n"
-                    f"⚠️ Fouten: {stats.get('errors', 0)}"
-                )
+                scraped = stats.get('scraped', 0)
+                passed = stats.get('passed_filter', 0)
+                new_cnt = stats.get('new_jobs', 0)
+                notified = stats.get('notified', 0)
+                errors = stats.get('errors', 0)
+                passed_jobs = stats.get('passed_jobs', [])
+
+                msg_lines = [
+                    "✅ <b>Scan voltooid!</b>\n",
+                    f"📋 <b>Gescand:</b> {scraped} vacatures",
+                    f"🎯 <b>Gefilterd:</b> {passed} matches",
+                    f"🆕 <b>Nieuw:</b> {new_cnt}",
+                    f"📨 <b>Verstuurd:</b> {notified}",
+                    f"⚠️ <b>Fouten:</b> {errors}\n",
+                ]
+
+                if passed_jobs:
+                    msg_lines.append("<b>🔥 Relevante opdrachten & vacatures (Top matches):</b>")
+                    # Sort by score descending
+                    sorted_jobs = sorted(passed_jobs, key=lambda x: x[1], reverse=True)
+                    for job, score in sorted_jobs[:10]:
+                        msg_lines.append(
+                            f"• <a href=\"{job.url}\">{job.title}</a>\n"
+                            f"  🏢 {job.source} | ⭐ Score: {score}"
+                        )
+                else:
+                    msg_lines.append("<i>Geen matchende vacatures gevonden in deze ronde.</i>")
+
+                full_msg = "\n".join(msg_lines)
+                if len(full_msg) > 3900:
+                    full_msg = full_msg[:3900] + "\n\n<i>… (lijst ingekort)</i>"
+
+                await self._send(full_msg)
             except Exception as e:
                 logger.error(f"[Bot] Manual scan failed: {e}", exc_info=True)
                 await self._send(f"❌ Scan mislukt: {e}")
