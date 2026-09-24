@@ -19,13 +19,16 @@ from .base import BaseScraper, JobItem
 CONTINU_URLS = [
     "https://www.continu.nl/vacatures/elektrotechniek",
     "https://www.continu.nl/vacatures/installatietechniek",
+    "https://www.continu.nl/vacatures/engineering",
+    "https://www.continu.nl/vacatures/bouw-en-infra",
+    "https://www.continu.nl/vacatures/werktuigbouwkunde",
     "https://www.continu.nl/vacatures",
 ]
 
 
 class ContinuScraper(BaseScraper):
     """
-    HTML Scraper for Continu Professionals — Engineering & Elektrotechniek.
+    High-speed concurrent HTML Scraper for Continu Professionals.
     """
 
     SOURCE_NAME = "Continu Professionals"
@@ -33,15 +36,16 @@ class ContinuScraper(BaseScraper):
     async def fetch_jobs(self) -> list[JobItem]:
         all_items: dict[str, JobItem] = {}
 
-        for target_url in CONTINU_URLS:
-            for page in range(1, max(2, self.max_pages // 2 + 1)):
+        async def _fetch_category(target_url: str) -> dict[str, JobItem]:
+            cat_items: dict[str, JobItem] = {}
+            for page in range(1, min(15, self.max_pages + 1)):
                 page_url = f"{target_url}?page={page}" if page > 1 else target_url
                 response = await self.safe_get(page_url)
                 if not response or response.status_code != 200:
                     break
 
                 soup = BeautifulSoup(response.text, "html.parser")
-                found = 0
+                page_links_count = 0
                 for a in soup.find_all("a", href=True):
                     href = a["href"]
                     if "/vacatures/" in href or "/vacature/" in href:
@@ -50,10 +54,10 @@ class ContinuScraper(BaseScraper):
                         if not title or len(title) < 5 or title.lower() in ("vacatures", "bekijk vacature", "lees meer"):
                             continue
 
+                        page_links_count += 1
                         job_id = self.make_id(url)
-                        if job_id not in all_items:
-                            found += 1
-                            all_items[job_id] = JobItem(
+                        if job_id not in cat_items:
+                            cat_items[job_id] = JobItem(
                                 id=job_id,
                                 title=title,
                                 source=self.SOURCE_NAME,
@@ -62,9 +66,14 @@ class ContinuScraper(BaseScraper):
                                 published_at=datetime.utcnow(),
                             )
 
-                if found == 0:
+                if page_links_count == 0:
                     break
                 await asyncio.sleep(self.rate_limit_delay)
+            return cat_items
+
+        results_list = await asyncio.gather(*[_fetch_category(url) for url in CONTINU_URLS])
+        for res in results_list:
+            all_items.update(res)
 
         results = list(all_items.values())
         logger.info(f"[{self.SOURCE_NAME}] Found {len(results)} unique jobs")

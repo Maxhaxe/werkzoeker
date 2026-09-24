@@ -45,14 +45,14 @@ class FreelanceNLScraper(BaseScraper):
         }
 
         for target_url in FREELANCE_NL_CATEGORIES:
-            for page in range(1, max(2, self.max_pages // 2 + 1)):
+            for page in range(1, self.max_pages + 1):
                 page_url = f"{target_url}?page={page}" if page > 1 else target_url
                 response = await self.safe_get(page_url, headers=headers)
                 if not response or response.status_code != 200:
                     break
 
                 soup = BeautifulSoup(response.text, "html.parser")
-                found = 0
+                page_links_count = 0
                 for a in soup.find_all("a", href=True):
                     href = a["href"]
                     if "/opdracht/" in href or "/opdrachten/" in href:
@@ -63,9 +63,9 @@ class FreelanceNLScraper(BaseScraper):
                         if not title or len(title) < 5 or title.lower() in ("bekijk opdrachten", "opdrachten", "lees meer"):
                             continue
 
+                        page_links_count += 1
                         job_id = self.make_id(url)
                         if job_id not in all_items:
-                            found += 1
                             all_items[job_id] = JobItem(
                                 id=job_id,
                                 title=title,
@@ -76,7 +76,7 @@ class FreelanceNLScraper(BaseScraper):
                                 published_at=datetime.utcnow(),
                             )
 
-                if found == 0:
+                if page_links_count == 0:
                     break
                 await asyncio.sleep(self.rate_limit_delay)
 
