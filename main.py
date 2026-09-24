@@ -344,6 +344,45 @@ async def test_notify() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Health Server (Required for Render Web Service Free Tier)
+# ---------------------------------------------------------------------------
+
+async def start_health_server() -> None:
+    """Start a lightweight HTTP server so Render Web Service health checks pass."""
+    port_str = os.getenv("PORT", "10000")
+    try:
+        port = int(port_str)
+    except ValueError:
+        port = 10000
+
+    async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            await reader.read(1024)
+            resp = (
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/plain\r\n"
+                "Content-Length: 2\r\n"
+                "Connection: close\r\n\r\nOK"
+            )
+            writer.write(resp.encode("utf-8"))
+            await writer.drain()
+        except Exception:
+            pass
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+    try:
+        await asyncio.start_server(handle_client, "0.0.0.0", port)
+        logger.info(f"Health check HTTP server active on port {port}")
+    except Exception as e:
+        logger.warning(f"Could not start health check HTTP server on port {port}: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Scheduler
 # ---------------------------------------------------------------------------
 
@@ -360,6 +399,8 @@ async def run_scheduler() -> None:
     logger.info(f"  Database  : {os.getenv('DB_PATH', 'jobs.db')}")
     logger.info(f"  Startup run: {run_on_startup}")
     logger.info("=" * 60)
+
+    await start_health_server()
 
     # Start Telegram command handler as a concurrent background task
     cmd_handler = TelegramCommandHandler(run_pipeline_fn=run_pipeline)
@@ -429,6 +470,13 @@ Examples:
     return parser.parse_args()
 
 
+async def start_listener_mode() -> None:
+    """Start listener mode with health server for cloud deployment."""
+    await start_health_server()
+    handler = TelegramCommandHandler(run_pipeline_fn=run_pipeline)
+    await handler.start()
+
+
 def main() -> None:
     configure_logging()
     args = parse_args()
@@ -443,8 +491,7 @@ def main() -> None:
         show_keywords()
     elif args.listen:
         logger.info("Starting Telegram command listener mode...")
-        handler = TelegramCommandHandler(run_pipeline_fn=run_pipeline)
-        asyncio.run(handler.start())
+        asyncio.run(start_listener_mode())
     elif args.run_once:
         logger.info("Running one cycle…")
         stats = asyncio.run(run_pipeline())
@@ -455,3 +502,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

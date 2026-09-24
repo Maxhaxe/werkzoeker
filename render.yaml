@@ -1,5 +1,5 @@
 services:
-  - type: worker
+  - type: web
     name: werkzoeker-bot
     env: python
     region: frankfurt
@@ -19,3 +19,6 @@ services:
         value: "true"
       - key: LOG_LEVEL
         value: "INFO"
+      - key: PORT
+        value: "10000"
+
