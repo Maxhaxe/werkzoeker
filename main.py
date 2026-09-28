@@ -471,10 +471,8 @@ Examples:
 
 
 async def start_listener_mode() -> None:
-    """Start listener mode with health server for cloud deployment."""
-    await start_health_server()
-    handler = TelegramCommandHandler(run_pipeline_fn=run_pipeline)
-    await handler.start()
+    """Start full listener and scheduler mode with health server for cloud deployment."""
+    await run_scheduler()
 
 
 def main() -> None:

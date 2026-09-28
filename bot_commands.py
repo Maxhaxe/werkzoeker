@@ -79,8 +79,8 @@ class TelegramCommandHandler:
 
     async def start(self) -> None:
         """Start the long-poll loop. Runs until cancelled."""
-        if not self.bot_token or not self.chat_id:
-            logger.warning("[Bot] Telegram not configured — command handler disabled")
+        if not self.bot_token:
+            logger.warning("[Bot] TELEGRAM_BOT_TOKEN not configured — command handler disabled")
             return
 
         logger.info("[Bot] Command handler started. Listening for Telegram commands…")
@@ -118,7 +118,7 @@ class TelegramCommandHandler:
         Fetch and process any unhandled pending updates non-blockingly.
         Returns the number of processed updates.
         """
-        if not self.bot_token or not self.chat_id:
+        if not self.bot_token:
             return 0
 
         processed = 0
