@@ -272,8 +272,8 @@ class NotifierDispatcher:
     Kept for API compatibility with main.py.
     """
 
-    def __init__(self):
-        self._notifier = TelegramNotifier()
+    def __init__(self, chat_id: str | None = None):
+        self._notifier = TelegramNotifier(chat_id=chat_id)
         self._open = False
 
     async def __aenter__(self) -> "NotifierDispatcher":

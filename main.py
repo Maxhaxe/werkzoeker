@@ -124,7 +124,7 @@ def get_scrapers(max_pages: int, rate_limit: float, timeout: float) -> list:
 # Core Pipeline
 # ---------------------------------------------------------------------------
 
-async def run_pipeline() -> dict:
+async def run_pipeline(override_chat_id: str | None = None) -> dict:
     """
     Execute one full scrape → filter → store → notify cycle.
     Returns a stats dict for logging.
@@ -187,7 +187,7 @@ async def run_pipeline() -> dict:
 
     # 3. Deduplicate & notify
     async with Storage() as db:
-        async with NotifierDispatcher() as notifier:
+        async with NotifierDispatcher(chat_id=override_chat_id) as notifier:
             for job, score, reasons in passed:
                 try:
                     if not await db.is_new(job.id):

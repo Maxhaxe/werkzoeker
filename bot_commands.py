@@ -657,7 +657,8 @@ class TelegramCommandHandler:
 
         async def _async_scan():
             try:
-                stats = await self._run_pipeline()
+                target_chat = getattr(self, "_active_chat_id", None)
+                stats = await self._run_pipeline(override_chat_id=target_chat)
                 scraped = stats.get('scraped', 0)
                 passed = stats.get('passed_filter', 0)
                 new_cnt = stats.get('new_jobs', 0)
