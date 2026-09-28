@@ -38,6 +38,7 @@ class IndeedRSSScraper(BaseScraper):
     """
 
     SOURCE_NAME = "Indeed NL"
+    _rate_semaphore = asyncio.Semaphore(2)  # Max 2 concurrent Indeed RSS requests across all instances
 
     async def fetch_jobs(self) -> list[JobItem]:
         all_items: dict[str, JobItem] = {}
@@ -57,7 +58,10 @@ class IndeedRSSScraper(BaseScraper):
         url = f"{INDEED_RSS_BASE}?{urlencode(params)}"
         logger.debug(f"[{self.SOURCE_NAME}] Fetching: {url}")
 
-        response = await self.safe_get(url)
+        async with IndeedRSSScraper._rate_semaphore:
+            await asyncio.sleep(0.4)  # Throttle Indeed RSS requests to avoid 429
+            response = await self.safe_get(url)
+
         if not response:
             return []
 

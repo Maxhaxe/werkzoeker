@@ -29,7 +29,7 @@ from typing import Any
 from loguru import logger
 
 from scrapers.base import JobItem
-from start_date_parser import extract_start_date, is_within_window
+from start_date_parser import extract_start_date, extract_end_date, is_within_window
 
 # Default path to the keywords config file
 DEFAULT_KEYWORDS_FILE = "keywords.json"
@@ -366,24 +366,31 @@ class FilterEngine:
             logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
             return FilterResult(passed=False, score=score, matched_keywords=matched, rejection_reason=reason)
 
-        # ---- Phase C: Start date window check ----
+        # ---- Phase C: Start & End date window check ----
         start_date, start_label = extract_start_date(text)
-        # Attach to job object for use in notification message
-        job.start_date_label = start_label
+        end_date, end_label = extract_end_date(text)
+
+        display_label = start_label
+        if end_label != "onbekend":
+            display_label = f"{start_label} | {end_label}" if start_label != "onbekend" else end_label
+        job.start_date_label = display_label
 
         if self.start_date_filter_active:
+            pub_date = job.published_at.date() if job.published_at else None
             passes_window, window_reason = is_within_window(
-                start_date,
+                start_date=start_date,
                 max_months_ahead=self.max_start_months,
                 include_unknown=self.include_unknown_start,
                 include_already_started=self.include_already_started,
+                end_date=end_date,
+                published_at=pub_date,
             )
             if not passes_window:
                 logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {window_reason}")
                 return FilterResult(
                     passed=False, score=score, matched_keywords=matched,
-                    rejection_reason=window_reason, start_date_label=start_label
+                    rejection_reason=window_reason, start_date_label=display_label
                 )
 
-        logger.debug(f"[Filter] PASS '{job.title[:50]}' — score={score}, kw={matched}, start='{start_label}'")
-        return FilterResult(passed=True, score=score, matched_keywords=matched, start_date_label=start_label)
+        logger.debug(f"[Filter] PASS '{job.title[:50]}' — score={score}, kw={matched}, start='{display_label}'")
+        return FilterResult(passed=True, score=score, matched_keywords=matched, start_date_label=display_label)

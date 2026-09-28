@@ -1,15 +1,15 @@
 """
-WerkZoeker — Start Date Parser
+WerkZoeker — Start Date & End Date Parser
 
-Extracts assignment start date information from Dutch (and English) job
-description text. Returns a parsed date (or None) and a human-readable label.
+Extracts assignment start date, end date, and deadline information from
+Dutch (and English) job description text. Returns parsed dates and human labels.
 
 Recognised patterns:
   - "per direct" / "z.s.m." / "zo snel mogelijk" → today
-  - "per 1 oktober 2026" / "vanaf oktober" → specific month
+  - "per 1 oktober 2026" / "vanaf oktober 2026" → specific date/month
   - "Q1 2027" / "4e kwartaal 2026" → estimated quarter start
   - "over 3 maanden" → relative date
-  - "begin/half/eind [month]" → approximate month position
+  - "einddatum 31-12-2026", "loopt tot 15 nov 2026" → end date
   - Nothing found → (None, "onbekend")
 """
 
@@ -50,30 +50,27 @@ QUARTER_TO_MONTH: dict[int, int] = {1: 1, 2: 4, 3: 7, 4: 10}
 # Helper: safe year extraction
 # ---------------------------------------------------------------------------
 
-def _current_year() -> int:
-    return date.today().year
-
-
 def _resolve_year(raw_year: str | None) -> int:
-    """Return a plausible year: prefer explicit, otherwise current or next."""
+    """Return explicit year if provided, else current or next year."""
     today = date.today()
     if raw_year:
-        y = int(raw_year)
-        # Accept years 2020–2035
-        if 2020 <= y <= 2035:
-            return y
-    # Default: if we're in Nov/Dec suggest next year, else current
+        try:
+            y = int(raw_year)
+            if 2020 <= y <= 2035:
+                return y
+        except ValueError:
+            pass
     return today.year if today.month <= 10 else today.year + 1
 
 
 # ---------------------------------------------------------------------------
-# Pattern matchers (ordered by specificity, most specific first)
+# Pattern matchers for Start Date
 # ---------------------------------------------------------------------------
 
 def _match_per_direct(text: str) -> Optional[tuple[date, str]]:
     patterns = [
         r"\bper\s+direct\b",
-        r"\bz\.?\s*s\.?\s*m\.?\b",         # z.s.m. / zsm
+        r"\bz\.?\s*s\.?\s*m\.?\b",
         r"\bzo\s+snel\s+mogelijk\b",
         r"\bimmediately\b",
         r"\bimmediate\s+start\b",
@@ -87,10 +84,11 @@ def _match_per_direct(text: str) -> Optional[tuple[date, str]]:
 
 
 def _match_specific_date(text: str) -> Optional[tuple[date, str]]:
-    """Match patterns like 'per 1 oktober 2026', 'vanaf 15 nov', '01-10-2026'."""
-    # Pattern: day month year
+    """Match patterns like 'per 1 oktober 2026', 'vanaf 15 nov 2026', '01-10-2026'."""
     p1 = re.search(
-        r"\b(\d{1,2})\s+(" + "|".join(MONTH_MAP) + r")\s*(\d{4})?\b",
+        r"\b(?:per|vanaf|start(?:datum)?|ingang(?:sdatum)?)?\s*(\d{1,2})\s+("
+        + "|".join(MONTH_MAP)
+        + r")\s*(\d{4})?\b",
         text, re.IGNORECASE
     )
     if p1:
@@ -103,7 +101,6 @@ def _match_specific_date(text: str) -> Optional[tuple[date, str]]:
         except ValueError:
             pass
 
-    # Pattern: DD-MM-YYYY or DD/MM/YYYY
     p2 = re.search(r"\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})\b", text)
     if p2:
         try:
@@ -116,16 +113,16 @@ def _match_specific_date(text: str) -> Optional[tuple[date, str]]:
 
 
 def _match_month_year(text: str) -> Optional[tuple[date, str]]:
-    """Match 'oktober 2026', 'start in november', 'vanaf maart'."""
+    """Match 'oktober 2026', 'start in november 2026', 'vanaf maart 2027'."""
     p = re.search(
-        r"\b(?:per|vanaf|start(?:datum)?|begin|in)?\s*("
+        r"\b(?:per|vanaf|start(?:datum)?|begin|in)\s+("
         + "|".join(MONTH_MAP)
-        + r")\s*(\d{4})?\b",
+        + r")\s+(\d{4})\b",
         text, re.IGNORECASE
     )
     if p:
         month = MONTH_MAP[p.group(1).lower()]
-        year = _resolve_year(p.group(2))
+        year = int(p.group(2))
         try:
             d = date(year, month, 1)
             label = f"~{p.group(1).capitalize()} {year}"
@@ -136,14 +133,13 @@ def _match_month_year(text: str) -> Optional[tuple[date, str]]:
 
 
 def _match_quarter(text: str) -> Optional[tuple[date, str]]:
-    """Match 'Q3 2026', '3e kwartaal 2026', 'vierde kwartaal'."""
+    """Match 'Q3 2026', '3e kwartaal 2026'."""
     word_to_q = {
         "eerste": 1, "1e": 1, "eerste kwartaal": 1,
         "tweede": 2, "2e": 2, "tweede kwartaal": 2,
         "derde": 3, "3e": 3, "derde kwartaal": 3,
         "vierde": 4, "4e": 4, "vierde kwartaal": 4,
     }
-    # Q1/Q2/Q3/Q4
     p1 = re.search(r"\bQ([1-4])\s*(\d{4})?\b", text, re.IGNORECASE)
     if p1:
         q = int(p1.group(1))
@@ -152,7 +148,6 @@ def _match_quarter(text: str) -> Optional[tuple[date, str]]:
         d = date(year, month, 1)
         return d, f"Q{q} {year}"
 
-    # "3e kwartaal 2026"
     p2 = re.search(
         r"\b([1-4]e|eerste|tweede|derde|vierde)\s+kwartaal\s*(\d{4})?\b",
         text, re.IGNORECASE
@@ -170,7 +165,7 @@ def _match_quarter(text: str) -> Optional[tuple[date, str]]:
 
 
 def _match_relative(text: str) -> Optional[tuple[date, str]]:
-    """Match 'over 3 maanden', 'binnen 6 weken', 'in 2 maanden'."""
+    """Match 'over 3 maanden', 'binnen 6 weken'."""
     p = re.search(
         r"\b(?:over|binnen|in)\s+(\d+)\s+(week(?:en)?|maand(?:en)?)\b",
         text, re.IGNORECASE
@@ -183,7 +178,6 @@ def _match_relative(text: str) -> Optional[tuple[date, str]]:
             d = today + timedelta(weeks=n)
             label = f"over ~{n} weken"
         else:
-            # Approximate: n months = n * 30 days
             d = today + timedelta(days=n * 30)
             label = f"over ~{n} maanden"
         return d, label
@@ -191,21 +185,16 @@ def _match_relative(text: str) -> Optional[tuple[date, str]]:
 
 
 def _match_begin_half_end(text: str) -> Optional[tuple[date, str]]:
-    """Match 'begin oktober', 'half november 2026', 'eind Q3'."""
+    """Match 'begin oktober 2026', 'half november 2026'."""
     p = re.search(
-        r"\b(begin|half|midden|eind(?:e)?)\s+(" + "|".join(MONTH_MAP) + r")\s*(\d{4})?\b",
+        r"\b(begin|half|midden)\s+(" + "|".join(MONTH_MAP) + r")\s*(\d{4})?\b",
         text, re.IGNORECASE
     )
     if p:
         position = p.group(1).lower()
         month = MONTH_MAP[p.group(2).lower()]
         year = _resolve_year(p.group(3))
-        if "begin" in position:
-            day = 1
-        elif "half" in position or "midden" in position:
-            day = 15
-        else:  # eind
-            day = 25
+        day = 1 if "begin" in position else 15
         try:
             d = date(year, month, day)
             return d, f"{position.capitalize()} {p.group(2).capitalize()} {year}"
@@ -218,33 +207,77 @@ def _match_begin_half_end(text: str) -> Optional[tuple[date, str]]:
 # Public API
 # ---------------------------------------------------------------------------
 
-MATCHERS = [
+START_MATCHERS = [
     _match_per_direct,
     _match_specific_date,
     _match_begin_half_end,
     _match_quarter,
     _match_relative,
-    _match_month_year,   # most general — run last
+    _match_month_year,
 ]
 
 
 def extract_start_date(text: str) -> tuple[Optional[date], str]:
     """
     Try to extract an assignment start date from job description text.
-
-    Returns:
-        (date, label)  — date is the estimated start, label is human-readable
-        (None, "onbekend")  — if no date found
+    Returns (date, label) or (None, "onbekend").
     """
     if not text:
         return None, "onbekend"
 
-    # Run matchers in order of specificity
-    for matcher in MATCHERS:
+    for matcher in START_MATCHERS:
         result = matcher(text)
         if result:
-            parsed_date, label = result
-            return parsed_date, label
+            return result
+
+    return None, "onbekend"
+
+
+def extract_end_date(text: str) -> tuple[Optional[date], str]:
+    """
+    Extract assignment end date / deadline from job description text.
+    Returns (date, label) or (None, "onbekend").
+    """
+    if not text:
+        return None, "onbekend"
+
+    # 1. "einddatum: 31-12-2025" or "eind datum 31 december 2025" or "loopt tot 15 nov 2025"
+    p1 = re.search(
+        r"\b(?:einddatum|eind\s+datum|loopt\s+tot|eindigt|sluitingsdatum|verlenging\s+tot)\s*:?\s*(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})\b",
+        text, re.IGNORECASE
+    )
+    if p1:
+        try:
+            d = date(int(p1.group(3)), int(p1.group(2)), int(p1.group(1)))
+            return d, f"Einddatum: {d.strftime('%d-%m-%Y')}"
+        except ValueError:
+            pass
+
+    # 2. "einddatum 31 december 2025" or "tot 15 november 2025"
+    p2 = re.search(
+        r"\b(?:einddatum|eind\s+datum|loopt\s+tot|eindigt|sluitingsdatum|tot\s+en\s+met|tot)\s*:?\s*(\d{1,2})\s+("
+        + "|".join(MONTH_MAP)
+        + r")\s+(\d{4})\b",
+        text, re.IGNORECASE
+    )
+    if p2:
+        try:
+            day = int(p2.group(1))
+            month = MONTH_MAP[p2.group(2).lower()]
+            year = int(p3 if (p3 := p2.group(3)) else date.today().year)
+            d = date(year, month, day)
+            return d, f"Einddatum: {day} {p2.group(2).capitalize()} {year}"
+        except ValueError:
+            pass
+
+    # 3. Explicit past year check in end date context "31-12-2024" or "31-12-2025"
+    p3 = re.search(r"\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](202[0-5])\b", text)
+    if p3:
+        try:
+            d = date(int(p3.group(3)), int(p3.group(2)), int(p3.group(1)))
+            return d, f"Datum uit verleden: {d.strftime('%d-%m-%Y')}"
+        except ValueError:
+            pass
 
     return None, "onbekend"
 
@@ -253,38 +286,42 @@ def is_within_window(
     start_date: Optional[date],
     max_months_ahead: int,
     include_unknown: bool = True,
-    include_already_started: bool = True,
+    include_already_started: bool = False,
+    end_date: Optional[date] = None,
+    published_at: Optional[date] = None,
 ) -> tuple[bool, str]:
     """
-    Check if a start date falls within the acceptable window.
-
-    Args:
-        start_date: Parsed start date (or None if unknown)
-        max_months_ahead: Maximum months in the future to accept (0 = per direct only)
-        include_unknown: If True, pass jobs with no detected start date
-        include_already_started: If True, pass jobs that have already started
-
-    Returns:
-        (passes: bool, reason: str)
+    Check if assignment dates fall within valid future window.
+    Strictly rejects past end dates, past start dates (when include_already_started=False),
+    and old publication dates.
     """
-    if start_date is None:
-        if include_unknown:
-            return True, "Startdatum onbekend (doorgelaten)"
-        return False, "Geen startdatum gevonden"
-
     today = date.today()
 
-    if start_date < today:
-        if include_already_started:
-            return True, f"Al gestart ({start_date.isoformat()})"
-        return False, f"Opdracht al begonnen ({start_date.isoformat()})"
+    # 1. Check publication date (if older than 90 days, reject as expired listing)
+    if published_at:
+        if published_at < today - timedelta(days=90):
+            return False, f"Vacature is te oud (gepubliceerd {published_at.isoformat()})"
 
-    cutoff = today + timedelta(days=max_months_ahead * 30)
-    if start_date <= cutoff:
-        return True, f"Start binnen {max_months_ahead} maanden"
+    # 2. Check end date / deadline (MUST be >= today)
+    if end_date:
+        if end_date < today:
+            return False, f"Einddatum is al verstreken ({end_date.isoformat()})"
 
-    return (
-        False,
-        f"Start te ver vooruit: {start_date.isoformat()} "
-        f"(max {max_months_ahead} maanden = {cutoff.isoformat()})"
-    )
+    # 3. Check start date
+    if start_date:
+        if start_date < today:
+            if not include_already_started:
+                return False, f"Opdracht/Startdatum is in het verleden ({start_date.isoformat()})"
+
+        cutoff = today + timedelta(days=max_months_ahead * 30)
+        if start_date > cutoff:
+            return (
+                False,
+                f"Start te ver vooruit: {start_date.isoformat()} (max {max_months_ahead}m = {cutoff.isoformat()})"
+            )
+        return True, f"Valid date: {start_date.isoformat()}"
+
+    # If start_date is None
+    if include_unknown:
+        return True, "Startdatum onbekend (doorgelaten)"
+    return False, "Geen startdatum gevonden"
