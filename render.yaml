@@ -19,6 +19,10 @@ services:
         value: "true"
       - key: LOG_LEVEL
         value: "INFO"
+      - key: INCLUDE_ALREADY_STARTED
+        value: "false"
+      - key: MAX_START_MONTHS_AHEAD
+        value: "6"
       - key: PORT
         value: "10000"
 

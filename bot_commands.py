@@ -243,6 +243,9 @@ class TelegramCommandHandler:
             "threshold":   self._cmd_threshold,
             "startdatum":  self._cmd_startfilter,
             "startfilter": self._cmd_startfilter,
+            "dagoverzicht": self._cmd_dagoverzicht,
+            "digest":       self._cmd_dagoverzicht,
+            "vandaag":      self._cmd_dagoverzicht,
             "run":         self._cmd_run,
         }
 
@@ -324,6 +327,7 @@ class TelegramCommandHandler:
             "  <i>/startfilter 3 = max 3 maanden vooruit</i>\n"
             "  <i>/startfilter 0 = filter uitschakelen</i>\n\n"
             "<b>Acties</b>\n"
+            "/dagoverzicht — Dagoverzicht van nieuwe opdrachten (afgelopen 24u)\n"
             "/run — Voer direct een scan uit\n\n"
             f"📂 Trefwoorden bestand: <code>keywords.json</code>"
         )
@@ -363,31 +367,31 @@ class TelegramCommandHandler:
         await self._send(full_text)
 
     async def _cmd_platformen(self, _args: str) -> None:
-        """Show all 20 supported job platforms."""
-        await self._send(
-            "🌐 <b>Ondersteunde Databronnen &amp; Platformen</b> (20 totaal)\n\n"
-            "1️⃣ <b>Freelance.nl</b> — Freelance opdrachten &amp; projecten\n"
-            "2️⃣ <b>Striive.com</b> — Interim &amp; freelance marktplaats\n"
-            "3️⃣ <b>Werkzoeken.nl</b> — Vacatures &amp; ZZP opdrachten\n"
-            "4️⃣ <b>Dosign.nl</b> — Engineering &amp; techniek opdrachten\n"
-            "5️⃣ <b>BlueBeaver.nl</b> — Freelance engineering projecten\n"
-            "6️⃣ <b>TechnischeVacaturebank.nl</b> — Technische vacatures\n"
-            "7️⃣ <b>VNOM.nl</b> — Bemiddeling in techniek &amp; ZZP\n"
-            "8️⃣ <b>Hoofdkraan.nl</b> — ZZP &amp; Freelance marktplaats\n"
-            "9️⃣ <b>Freelancenetwerk.nl</b> — Freelance opdrachten netwerk\n"
-            "🔟 <b>Indeed NL</b> — Aggregator vacatures\n"
-            "1️⃣1️⃣ <b>Continu Professionals</b> — Engineering &amp; Elektrotechniek\n"
-            "1️⃣2️⃣ <b>Maintec</b> — Technische vacatures &amp; detachering\n"
-            "1️⃣3️⃣ <b>Technical Valley</b> — Energietechniek &amp; Elektrotechniek\n"
-            "1️⃣4️⃣ <b>Matchd</b> — Interim &amp; ZZP opdrachten / Engineering\n"
-            "1️⃣5️⃣ <b>Randstad Techniek</b> — Vacatures Techniek &amp; Elektro\n"
-            "1️⃣6️⃣ <b>Tempo-Team Techniek</b> — Techniek &amp; Installatie vacatures\n"
-            "1️⃣7️⃣ <b>Synsel Techniek</b> — Elektrotechniek &amp; Automatisering\n"
-            "1️⃣8️⃣ <b>Covebo Techniek</b> — Technische vacatures &amp; montage\n"
-            "1️⃣9️⃣ <b>Werken bij Heijmans</b> — Energie &amp; Infrastructuur\n"
-            "2️⃣0️⃣ <b>WtbE Engineering</b> — Engineering &amp; Maintenance consultancy\n\n"
-            "<i>De bot scant al deze 20 bronnen automatisch en filtert op relevante technische trefwoorden.</i>"
-        )
+        """Show all supported job platforms dynamically."""
+        from main import get_scrapers
+        
+        # Instantiate scrapers with dummy params to read their SOURCE_NAME
+        scrapers = get_scrapers(max_pages=1, rate_limit=0.1, timeout=10)
+        source_names = [s.SOURCE_NAME for s in scrapers]
+        
+        total = len(source_names)
+        
+        lines = [
+            f"🌐 <b>Ondersteunde Databronnen &amp; Platformen</b> ({total} totaal)\n"
+        ]
+        
+        # We limit the output since 50+ lines might exceed telegram single message bounds easily,
+        # but 53 sources * ~30 chars is ~1500 chars which is fine.
+        for i, name in enumerate(source_names, 1):
+            lines.append(f"{i}. <b>{name}</b>")
+            
+        lines.append(f"\n<i>De bot scant al deze {total} bronnen automatisch en filtert op relevante technische trefwoorden.</i>")
+        
+        full_text = "\n".join(lines)
+        if len(full_text) > 4000:
+            full_text = full_text[:4000] + "\n\n<i>… lijst ingekort.</i>"
+            
+        await self._send(full_text)
 
     async def _cmd_start(self, args: str) -> None:
         """Handle /start (Telegram default) — show welcome + help."""
@@ -640,6 +644,46 @@ class TelegramCommandHandler:
             f"  <b>{label}</b>\n\n"
             f"Actief vanaf de volgende scan."
         )
+
+    async def _cmd_dagoverzicht(self, _args: str) -> None:
+        """Show daily overview / digest of jobs found in the last 24 hours."""
+        from storage import Storage
+
+        try:
+            async with Storage() as db:
+                jobs = await db.get_jobs_last_24h()
+
+            if not jobs:
+                await self._send(
+                    "📅 <b>Dagoverzicht WerkZoeker (Laatste 24 uur)</b>\n\n"
+                    "<i>Er zijn in de afgelopen 24 uur geen nieuwe matchende opdrachten/vacatures gevonden.</i>"
+                )
+                return
+
+            lines = [
+                f"📅 <b>Dagoverzicht WerkZoeker — {len(jobs)} Nieuwe Opdrachten (Afgelopen 24u)</b>\n"
+            ]
+
+            for idx, j in enumerate(jobs[:15], 1):
+                loc = f" 📍 {j['location']}" if j.get("location") else ""
+                rate = f" 💰 {j['rate_or_hours']}" if j.get("rate_or_hours") else ""
+                lines.append(
+                    f"{idx}. <a href=\"{j['url']}\"><b>{j['title']}</b></a>\n"
+                    f"   🏢 {j['source']}{loc}{rate} | ⭐ Score: {j['score']}"
+                )
+
+            if len(jobs) > 15:
+                lines.append(f"\n<i>… en nog {len(jobs) - 15} andere opdrachten in de database.</i>")
+
+            full_msg = "\n".join(lines)
+            if len(full_msg) > 3900:
+                full_msg = full_msg[:3900] + "\n\n<i>… (lijst ingekort)</i>"
+
+            await self._send(full_msg)
+
+        except Exception as e:
+            logger.error(f"[Bot] Failed to generate daily overview: {e}")
+            await self._send(f"❌ Fout bij het ophalen van het dagoverzicht: {e}")
 
     async def _cmd_run(self, _args: str) -> None:
         """Trigger an immediate scrape cycle in background task."""

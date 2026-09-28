@@ -289,8 +289,8 @@ class FilterEngine:
             int(max_months_env) if max_months_env is not None else DEFAULT_MAX_START_MONTHS
         )
         self.include_unknown_start   = os.getenv("INCLUDE_UNKNOWN_START_DATE", "true").lower() == "true"
-        self.include_already_started = os.getenv("INCLUDE_ALREADY_STARTED", "true").lower() == "true"
-        self.start_date_filter_active = os.getenv("MAX_START_MONTHS_AHEAD", "") != ""
+        self.include_already_started = os.getenv("INCLUDE_ALREADY_STARTED", "false").lower() == "true"
+        self.start_date_filter_active = os.getenv("START_DATE_FILTER_ACTIVE", "true").lower() in ("true", "1", "yes") or os.getenv("MAX_START_MONTHS_AHEAD", "") != ""
 
         # Load keywords from file (supports live editing between runs)
         active_keywords = load_keywords(keywords_file)

@@ -24,6 +24,10 @@ from .synsel import SynselScraper
 from .covebo import CoveboScraper
 from .heijmans import HeijmansScraper
 from .wtbe import WtbEScraper
+from .yacht import YachtScraper
+from .enginear import EnginearScraper
+from .freep import FreepScraper
+from .extra_agencies import EXTRA_AGENCY_SCRAPERS
 
 __all__ = [
     "BaseScraper",
@@ -48,4 +52,8 @@ __all__ = [
     "CoveboScraper",
     "HeijmansScraper",
     "WtbEScraper",
+    "YachtScraper",
+    "EnginearScraper",
+    "FreepScraper",
+    "EXTRA_AGENCY_SCRAPERS",
 ]

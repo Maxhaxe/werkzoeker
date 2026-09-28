@@ -221,3 +221,30 @@ class Storage:
             }
             for r in rows
         ]
+
+    async def get_jobs_last_24h(self) -> list[dict]:
+        """Return all matching jobs saved in the last 24 hours."""
+        conn = self._ensure_connected()
+        query = """
+        SELECT id, title, source, url, score, match_reasons, location, rate_or_hours, created_at, notified
+        FROM found_jobs
+        WHERE datetime(created_at) >= datetime('now', '-1 day')
+        ORDER BY score DESC, created_at DESC;
+        """
+        async with conn.execute(query) as cursor:
+            rows = await cursor.fetchall()
+        return [
+            {
+                "id": r[0],
+                "title": r[1],
+                "source": r[2],
+                "url": r[3],
+                "score": r[4],
+                "match_reasons": json.loads(r[5]),
+                "location": r[6],
+                "rate_or_hours": r[7],
+                "created_at": r[8],
+                "notified": bool(r[9]),
+            }
+            for r in rows
+        ]

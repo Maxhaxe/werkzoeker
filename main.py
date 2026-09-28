@@ -49,6 +49,10 @@ from scrapers import (
     CoveboScraper,
     HeijmansScraper,
     WtbEScraper,
+    YachtScraper,
+    EnginearScraper,
+    FreepScraper,
+    EXTRA_AGENCY_SCRAPERS,
 )
 from filter_engine import FilterEngine, show_keywords
 from storage import Storage
@@ -92,11 +96,12 @@ def configure_logging() -> None:
 # ---------------------------------------------------------------------------
 
 def get_scrapers(max_pages: int, rate_limit: float, timeout: float) -> list:
-    """Return all active scraper instances (20 sources)."""
+    """Return all active scraper instances (53 sources)."""
     common = dict(max_pages=max_pages, rate_limit_delay=rate_limit, timeout=timeout)
     rss_only = dict(rate_limit_delay=rate_limit, timeout=timeout)
-    return [
-        # RSS feeds & HTML scrapers (20 platforms total)
+    
+    base_scrapers = [
+        # RSS feeds & HTML scrapers (23 platforms total)
         FreelanceNLScraper(**rss_only),
         IndeedRSSScraper(**rss_only),
         TechnischeVacaturebankScraper(**rss_only),
@@ -117,7 +122,16 @@ def get_scrapers(max_pages: int, rate_limit: float, timeout: float) -> list:
         CoveboScraper(**common),
         HeijmansScraper(**common),
         WtbEScraper(**common),
+        YachtScraper(**common),
+        EnginearScraper(**common),
+        FreepScraper(**common),
     ]
+    
+    # Add the 30 extra agency scrapers (using RSS backend)
+    for cls in EXTRA_AGENCY_SCRAPERS:
+        base_scrapers.append(cls(**rss_only))
+        
+    return base_scrapers
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +248,43 @@ async def run_pipeline(override_chat_id: str | None = None) -> dict:
         f"db_total={db_stats.get('total', '?')}"
     )
     return stats
+
+
+async def send_daily_digest() -> None:
+    """Send daily overview of all jobs found in the last 24h to registered chats."""
+    try:
+        async with Storage() as db:
+            jobs = await db.get_jobs_last_24h()
+
+        if not jobs:
+            logger.info("[Scheduler] Daily digest skipped: 0 jobs in last 24h")
+            return
+
+        lines = [
+            f"☀️ <b>WerkZoeker Dagoverzicht — {len(jobs)} Nieuwe Opdrachten (Afgelopen 24u)</b>\n"
+        ]
+        for idx, j in enumerate(jobs[:15], 1):
+            loc = f" 📍 {j['location']}" if j.get("location") else ""
+            rate = f" 💰 {j['rate_or_hours']}" if j.get("rate_or_hours") else ""
+            lines.append(
+                f"{idx}. <a href=\"{j['url']}\"><b>{j['title']}</b></a>\n"
+                f"   🏢 {j['source']}{loc}{rate} | ⭐ Score: {j['score']}"
+            )
+        if len(jobs) > 15:
+            lines.append(f"\n<i>… en nog {len(jobs) - 15} andere opdrachten in de database.</i>")
+
+        full_msg = "\n".join(lines)
+        if len(full_msg) > 3900:
+            full_msg = full_msg[:3900] + "\n\n<i>… (lijst ingekort)</i>"
+
+        async with NotifierDispatcher() as notifier:
+            for n in notifier._notifiers:
+                if isinstance(n, TelegramNotifier):
+                    for chat_id in n.chat_ids:
+                        await n._send_raw(full_msg, override_chat_id=chat_id)
+        logger.info("[Scheduler] Daily digest sent successfully.")
+    except Exception as e:
+        logger.error(f"[Scheduler] Daily digest failed: {e}")
 
 # ---------------------------------------------------------------------------
 # CLI Modes
@@ -420,8 +471,17 @@ async def run_scheduler() -> None:
         max_instances=1,  # Never run two cycles simultaneously
         coalesce=True,    # Skip missed runs (e.g., after sleep/hibernate)
     )
+    scheduler.add_job(
+        send_daily_digest,
+        trigger="cron",
+        hour=9,
+        minute=0,
+        id="daily_digest",
+        name="WerkZoeker Daily Digest",
+        coalesce=True,
+    )
     scheduler.start()
-    logger.info(f"Scheduler started. Next run in {interval_minutes} minutes.")
+    logger.info(f"Scheduler started. Next run in {interval_minutes} minutes. Daily digest scheduled at 09:00 AM.")
 
     # Send startup messages to all channels
     async with NotifierDispatcher() as notifier:
