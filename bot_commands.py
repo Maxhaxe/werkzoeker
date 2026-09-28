@@ -214,6 +214,8 @@ class TelegramCommandHandler:
 
         # Store active chat ID so replies go to the exact group/chat that issued the command
         self._active_chat_id = chat_id
+        # Automatically register chat_id so notifications dispatch to this chat/group
+        self._register_chat_id(chat_id)
         logger.info(f"[Bot] Command received in {chat_type} ({chat_id}): '{text}'")
 
         # Parse command
@@ -223,8 +225,12 @@ class TelegramCommandHandler:
 
         handlers = {
             "help":        self._cmd_help,
-            "start":       self._cmd_start,   # /start is also Telegram's default
+            "start":       self._cmd_start,   # /start is Telegram's default
             "status":      self._cmd_status,
+            "groep":       self._cmd_groep,
+            "group":       self._cmd_groep,
+            "koppel":      self._cmd_groep,
+            "here":        self._cmd_groep,
             "platformen":  self._cmd_platformen,
             "bronnen":     self._cmd_platformen,
             "keywords":    self._cmd_keywords,
@@ -249,15 +255,60 @@ class TelegramCommandHandler:
                 f"Typ <b>/help</b> voor een overzicht."
             )
 
+    def _register_chat_id(self, chat_id: str) -> bool:
+        """Register a chat_id (e.g. group chat or supergroup) so notification dispatch sends to it."""
+        if not chat_id:
+            return False
+
+        current_raw = os.getenv("TELEGRAM_CHAT_ID", "")
+        current_ids = [c.strip() for c in current_raw.split(",") if c.strip()]
+
+        if chat_id not in current_ids:
+            current_ids.append(chat_id)
+            new_val = ",".join(current_ids)
+            os.environ["TELEGRAM_CHAT_ID"] = new_val
+            self._chat_id = new_val
+
+            # Save persistently to bot_settings.json
+            settings = self._load_settings()
+            settings["TELEGRAM_CHAT_ID"] = new_val
+            self._save_settings(settings)
+            logger.info(f"[Bot] Auto-registered chat_id '{chat_id}'. Total active chat_ids: {new_val}")
+            return True
+        return False
+
     # -----------------------------------------------------------------------
     # Command Implementations
     # -----------------------------------------------------------------------
 
+    async def _cmd_start(self, _args: str) -> None:
+        chat_id = getattr(self, "_active_chat_id", self.chat_id)
+        self._register_chat_id(chat_id)
+        await self._send(
+            "⚡ <b>Welkom bij WerkZoeker Bot!</b>\n\n"
+            f"✅ <b>Deze chat ({chat_id}) is succesvol gekoppeld!</b>\n"
+            "Alle matchende vacatures en opdrachten worden vanaf nu automatisch hier verzonden.\n\n"
+            "Gebruik <b>/help</b> voor het overzicht van alle commando's of <b>/run</b> om direct een scan uit te voeren."
+        )
+
+    async def _cmd_groep(self, _args: str) -> None:
+        chat_id = getattr(self, "_active_chat_id", self.chat_id)
+        self._register_chat_id(chat_id)
+        active_ids = [c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
+        await self._send(
+            f"👥 <b>Groepsapp Koppeling WerkZoeker</b>\n\n"
+            f"📌 <b>Huidige Chat ID:</b> <code>{chat_id}</code>\n"
+            f"✅ Deze chat is ingesteld voor het ontvangen van automatische vacaturemeldingen!\n\n"
+            f"<b>Actieve gekoppelde chats ({len(active_ids)}):</b>\n"
+            f"<code>{', '.join(active_ids)}</code>"
+        )
+
     async def _cmd_help(self, _args: str) -> None:
         await self._send(
             "⚡ <b>WerkZoeker — Commando's</b>\n\n"
-            "<b>Informatie & Bronnen</b>\n"
+            "<b>Informatie & Groepsinstellingen</b>\n"
             "/status — Bot status &amp; statistieken\n"
+            "/groep — Koppel deze groepsapp/chat voor meldingen\n"
             "/platformen — Overzicht van alle ondersteunde databronnen\n"
             "/zoektermen — Overzicht van actieve zoektermen &amp; trefwoorden\n"
             "/keywords — Toon alle actieve trefwoorden per score\n\n"
@@ -710,8 +761,14 @@ def apply_saved_settings() -> None:
         with open(settings_file, encoding="utf-8") as f:
             settings = json.load(f)
         for key, val in settings.items():
-            os.environ[key] = str(val)
-            logger.debug(f"[Settings] Restored: {key}={val}")
+            if key == "TELEGRAM_CHAT_ID":
+                env_ids = [c.strip() for c in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
+                saved_ids = [c.strip() for c in str(val).split(",") if c.strip()]
+                combined = list(dict.fromkeys(env_ids + saved_ids))
+                os.environ["TELEGRAM_CHAT_ID"] = ",".join(combined)
+            else:
+                os.environ[key] = str(val)
+            logger.debug(f"[Settings] Restored: {key}={os.environ.get(key)}")
         logger.info(f"[Settings] Restored {len(settings)} saved settings from bot_settings.json")
     except Exception as e:
         logger.warning(f"[Settings] Failed to load bot_settings.json: {e}")
