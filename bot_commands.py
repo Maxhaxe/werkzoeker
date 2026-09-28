@@ -22,6 +22,7 @@ Supported commands:
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import os
 from pathlib import Path
@@ -729,9 +730,11 @@ class TelegramCommandHandler:
                     # Sort by score descending
                     sorted_jobs = sorted(passed_jobs, key=lambda x: x[1], reverse=True)
                     for job, score in sorted_jobs[:10]:
+                        safe_title = html.escape(job.title)
+                        safe_source = html.escape(job.source)
                         msg_lines.append(
-                            f"• <a href=\"{job.url}\">{job.title}</a>\n"
-                            f"  🏢 {job.source} | ⭐ Score: {score}"
+                            f"• <a href=\"{job.url}\"><b>{safe_title}</b></a>\n"
+                            f"  🏢 {safe_source} | ⭐ Score: {score}"
                         )
                 else:
                     msg_lines.append("<i>Geen matchende vacatures gevonden in deze ronde.</i>")
