@@ -53,7 +53,7 @@ class TelegramCommandHandler:
         await handler.start()          # runs forever (call from asyncio task)
     """
 
-    def __init__(self, run_pipeline_fn: Callable[[], Awaitable[dict]] | None = None):
+    def __init__(self, run_pipeline_fn: Callable[..., Awaitable[dict]] | None = None):
         self._bot_token  = None
         self._chat_id    = None
         self.keywords_file = Path(os.getenv("KEYWORDS_FILE", "keywords.json"))
@@ -290,9 +290,12 @@ class TelegramCommandHandler:
     # Command Implementations
     # -----------------------------------------------------------------------
 
-    async def _cmd_start(self, _args: str) -> None:
+    async def _cmd_start(self, args: str) -> None:
         chat_id = getattr(self, "_active_chat_id", self.chat_id)
         self._register_chat_id(chat_id)
+        if args and args.strip().isdigit():
+            await self._cmd_startfilter(args)
+            return
         await self._send(
             "⚡ <b>Welkom bij WerkZoeker Bot!</b>\n\n"
             f"✅ <b>Deze chat ({chat_id}) is succesvol gekoppeld!</b>\n"
@@ -386,8 +389,6 @@ class TelegramCommandHandler:
             f"🌐 <b>Ondersteunde Databronnen &amp; Platformen</b> ({total} totaal)\n"
         ]
         
-        # We limit the output since 50+ lines might exceed telegram single message bounds easily,
-        # but 53 sources * ~30 chars is ~1500 chars which is fine.
         for i, name in enumerate(source_names, 1):
             lines.append(f"{i}. <b>{name}</b>")
             
@@ -399,17 +400,6 @@ class TelegramCommandHandler:
             
         await self._send(full_text)
 
-    async def _cmd_start(self, args: str) -> None:
-        """Handle /start (Telegram default) — show welcome + help."""
-        if args:
-            # If called as /start with args it might be from startfilter alias
-            await self._cmd_startfilter(args)
-        else:
-            await self._send(
-                "👋 <b>WerkZoeker actief!</b>\n"
-                "Typ /help voor een overzicht van alle commando's."
-            )
-
     async def _cmd_status(self, _args: str) -> None:
         """Show bot status and database statistics."""
         from storage import Storage
@@ -417,9 +407,10 @@ class TelegramCommandHandler:
 
         keywords = load_keywords(str(self.keywords_file))
         threshold = os.getenv("SCORE_THRESHOLD", "6")
-        start_filter = os.getenv("MAX_START_MONTHS_AHEAD", "uitgeschakeld")
+        raw_start_filter = os.getenv("MAX_START_MONTHS_AHEAD", "")
+        start_filter = f"{raw_start_filter} maanden" if raw_start_filter and raw_start_filter != "0" else "uitgeschakeld"
         interval = os.getenv("SCRAPE_INTERVAL_MINUTES", "30")
-        channels = os.getenv("NOTIFY_CHANNELS", "telegram,whatsapp")
+        channels = os.getenv("NOTIFY_CHANNELS", "telegram")
 
         try:
             async with Storage() as db:
@@ -437,7 +428,7 @@ class TelegramCommandHandler:
             "🤖 <b>WerkZoeker Status</b>\n\n"
             f"⏱ Interval: elke {interval} minuten\n"
             f"🎯 Score drempel: {threshold} punten\n"
-            f"📅 Startdatum filter: {start_filter} maanden\n"
+            f"📅 Startdatum filter: {start_filter}\n"
             f"📡 Kanalen: {channels}\n"
             f"🔤 Trefwoorden: {len(keywords)} actief\n\n"
             f"{db_text}"
@@ -470,19 +461,24 @@ class TelegramCommandHandler:
 
     async def _cmd_add(self, args: str) -> None:
         """
-        /add woord:punten  — Add or update a keyword.
+        /add woord:punten or /add woord punten — Add or update a keyword.
         Examples:
             /add scada:3
+            /add scada 3
             /add substation automation:4
         """
-        if ":" not in args:
+        args_clean = args.strip()
+        if ":" in args_clean:
+            word, _, pts_str = args_clean.rpartition(":")
+        elif " " in args_clean:
+            word, pts_str = args_clean.rsplit(None, 1)
+        else:
             await self._send(
-                "❌ Gebruik: <code>/add trefwoord:punten</code>\n"
+                "❌ Gebruik: <code>/add trefwoord:punten</code> of <code>/add trefwoord punten</code>\n"
                 "Voorbeeld: <code>/add scada:3</code>"
             )
             return
 
-        word, _, pts_str = args.strip().rpartition(":")
         word = word.strip().lower()
         pts_str = pts_str.strip()
 
@@ -531,22 +527,19 @@ class TelegramCommandHandler:
         data   = self._load_json()
         found  = False
 
-        # Remove from all categories
-        for category in ("roles", "domains", "tools", "norms"):
-            if word in data.get(category, {}):
-                del data[category][word]
-                found = True
-
-        # Remove from custom
-        custom = data.get("custom", {})
-        if word in custom:
-            del custom[word]
-            found = True
-        # Also check nested custom groups
-        for key, val in list(custom.items()):
-            if isinstance(val, dict) and word in val:
-                del val[word]
-                found = True
+        # Remove from all categories/sections in keywords.json
+        for key, val in list(data.items()):
+            if key.startswith("_") or key == "disabled":
+                continue
+            if isinstance(val, dict):
+                if word in val:
+                    del val[word]
+                    found = True
+                # Also check nested dicts
+                for sub_key, sub_val in list(val.items()):
+                    if isinstance(sub_val, dict) and word in sub_val:
+                        del sub_val[word]
+                        found = True
 
         if found:
             self._save_json(data)

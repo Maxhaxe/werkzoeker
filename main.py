@@ -143,6 +143,9 @@ async def run_pipeline(override_chat_id: str | None = None) -> dict:
     Execute one full scrape → filter → store → notify cycle.
     Returns a stats dict for logging.
     """
+    # Always reload any Telegram bot settings (/threshold, chat_id, etc.)
+    apply_saved_settings()
+
     max_pages   = int(os.getenv("MAX_PAGES_PER_SCRAPER", "50"))
     rate_limit  = float(os.getenv("RATE_LIMIT_DELAY", "2.0"))
     timeout     = float(os.getenv("REQUEST_TIMEOUT", "30"))

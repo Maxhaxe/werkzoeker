@@ -51,3 +51,32 @@ def test_phase_c_reject_past_end_date(filter_engine_default, sample_expired_job)
     assert not result.passed
     reason = result.rejection_reason.lower()
     assert any(w in reason for w in ["verstreken", "verleden", "oud"])
+
+def test_score_threshold_enforcement(monkeypatch):
+    monkeypatch.setenv("SCORE_THRESHOLD", "7")
+    engine = FilterEngine()
+    assert engine.score_threshold == 7
+
+    job_score_4 = JobItem(
+        id="job-score-4",
+        title="Electrical Engineer Freelance",
+        source="Freelance.nl",
+        url="https://example.com/job-4",
+        description="Electrical engineer ZZP inhuur.",
+        published_at=datetime.utcnow(),
+    )
+    res4 = engine.evaluate(job_score_4)
+    assert not res4.passed
+    assert "Score 4 < threshold 7" in res4.rejection_reason
+
+    job_score_8 = JobItem(
+        id="job-score-8",
+        title="Werkvoorbereider Elektrotechniek / E-Engineer Freelance",
+        source="Freelance.nl",
+        url="https://example.com/job-8",
+        description="Werkvoorbereider elektrotechniek en E-Engineer ZZP inhuur.",
+        published_at=datetime.utcnow(),
+    )
+    res8 = engine.evaluate(job_score_8)
+    assert res8.passed
+    assert res8.score >= 7

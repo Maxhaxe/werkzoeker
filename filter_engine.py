@@ -277,20 +277,24 @@ class FilterEngine:
     """
 
     def __init__(self, score_threshold: int | None = None, keywords_file: str | None = None):
-        threshold_env = os.getenv("SCORE_THRESHOLD")
+        threshold_env = os.getenv("SCORE_THRESHOLD", "").strip()
         self.score_threshold = (
             score_threshold
             if score_threshold is not None
-            else (int(threshold_env) if threshold_env else DEFAULT_SCORE_THRESHOLD)
+            else (int(threshold_env) if threshold_env.isdigit() else DEFAULT_SCORE_THRESHOLD)
         )
         # Start date window config
-        max_months_env = os.getenv("MAX_START_MONTHS_AHEAD")
+        max_months_env = os.getenv("MAX_START_MONTHS_AHEAD", "").strip()
         self.max_start_months = (
-            int(max_months_env) if max_months_env is not None else DEFAULT_MAX_START_MONTHS
+            int(max_months_env) if max_months_env.isdigit() else DEFAULT_MAX_START_MONTHS
         )
         self.include_unknown_start   = os.getenv("INCLUDE_UNKNOWN_START_DATE", "true").lower() == "true"
         self.include_already_started = os.getenv("INCLUDE_ALREADY_STARTED", "false").lower() == "true"
-        self.start_date_filter_active = os.getenv("START_DATE_FILTER_ACTIVE", "true").lower() in ("true", "1", "yes") or os.getenv("MAX_START_MONTHS_AHEAD", "") != ""
+        self.start_date_filter_active = (
+            os.getenv("START_DATE_FILTER_ACTIVE", "true").lower() in ("true", "1", "yes")
+            and max_months_env != ""
+            and max_months_env != "0"
+        )
 
         # Load keywords from file (supports live editing between runs)
         active_keywords = load_keywords(keywords_file)
