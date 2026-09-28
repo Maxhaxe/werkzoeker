@@ -206,7 +206,8 @@ class TelegramCommandHandler:
 
         # Security check: allowed if chat_id in TELEGRAM_CHAT_ID list, OR if it's a group chat and ALLOW_GROUPS=true
         allow_all_groups = os.getenv("ALLOW_GROUPS", "true").lower() in ("true", "1", "yes")
-        is_allowed = (chat_id in self.allowed_chat_ids) or (allow_all_groups and chat_type in ("group", "supergroup"))
+        admin_chat = os.getenv("ADMIN_CHAT_ID", "")
+        is_allowed = (chat_id in self.allowed_chat_ids) or (chat_id == admin_chat) or (allow_all_groups and chat_type in ("group", "supergroup"))
 
         if not is_allowed:
             logger.debug(f"[Bot] Ignored message from unauthorized chat {chat_id} (type={chat_type})")
@@ -261,6 +262,10 @@ class TelegramCommandHandler:
     def _register_chat_id(self, chat_id: str) -> bool:
         """Register a chat_id (e.g. group chat or supergroup) so notification dispatch sends to it."""
         if not chat_id:
+            return False
+            
+        admin_chat = os.getenv("ADMIN_CHAT_ID", "")
+        if chat_id == admin_chat:
             return False
 
         current_raw = os.getenv("TELEGRAM_CHAT_ID", "")
