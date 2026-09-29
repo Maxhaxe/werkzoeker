@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import gc
 import os
 import sys
 from datetime import datetime
@@ -138,48 +139,61 @@ def get_scrapers(max_pages: int, rate_limit: float, timeout: float) -> list:
 # Core Pipeline
 # ---------------------------------------------------------------------------
 
+_pipeline_lock = asyncio.Lock()
+
+
 async def run_pipeline(override_chat_id: str | None = None) -> dict:
     """
     Execute one full scrape → filter → store → notify cycle.
     Returns a stats dict for logging.
     """
-    # Always reload any Telegram bot settings (/threshold, chat_id, etc.)
-    apply_saved_settings()
+    if _pipeline_lock.locked():
+        logger.warning("Pipeline is already executing — skipping concurrent scrape request")
+        return {"status": "busy", "scraped": 0, "passed_filter": 0, "new_jobs": 0, "notified": 0, "errors": 0}
 
-    max_pages   = int(os.getenv("MAX_PAGES_PER_SCRAPER", "50"))
-    rate_limit  = float(os.getenv("RATE_LIMIT_DELAY", "2.0"))
-    timeout     = float(os.getenv("REQUEST_TIMEOUT", "30"))
+    async with _pipeline_lock:
+        # Always reload any Telegram bot settings (/threshold, chat_id, etc.)
+        apply_saved_settings()
 
-    scrapers = get_scrapers(max_pages, rate_limit, timeout)
-    engine   = FilterEngine()
+        max_pages      = int(os.getenv("MAX_PAGES_PER_SCRAPER", "3"))
+        max_concurrent = int(os.getenv("MAX_CONCURRENT_SCRAPERS", "2"))
+        rate_limit     = float(os.getenv("RATE_LIMIT_DELAY", "2.0"))
+        timeout        = float(os.getenv("REQUEST_TIMEOUT", "30"))
 
-    stats = {
-        "scraped": 0,
-        "passed_filter": 0,
-        "new_jobs": 0,
-        "notified": 0,
-        "errors": 0,
-        "started_at": datetime.utcnow().isoformat(),
-    }
+        scrapers = get_scrapers(max_pages, rate_limit, timeout)
+        engine   = FilterEngine()
 
-    # 1. Scrape all sources concurrently
-    all_jobs: list[JobItem] = []
+        stats = {
+            "scraped": 0,
+            "passed_filter": 0,
+            "new_jobs": 0,
+            "notified": 0,
+            "errors": 0,
+            "started_at": datetime.utcnow().isoformat(),
+        }
 
-    async def _run_single_scraper(scr):
-        try:
-            async with scr:
-                jobs = await scr.fetch_jobs()
-                logger.info(f"[{scr.SOURCE_NAME}] → {len(jobs)} jobs scraped")
-                return jobs
-        except Exception as exc:
-            logger.error(f"[{scr.SOURCE_NAME}] Scraper crashed: {exc}")
-            stats["errors"] += 1
-            return []
+        # 1. Scrape all sources with controlled concurrency (prevents OOM on constrained hosts like Render)
+        all_jobs: list[JobItem] = []
+        semaphore = asyncio.Semaphore(max_concurrent)
 
-    results = await asyncio.gather(*[_run_single_scraper(s) for s in scrapers], return_exceptions=True)
-    for res in results:
-        if isinstance(res, list):
-            all_jobs.extend(res)
+        async def _run_single_scraper(scr):
+            async with semaphore:
+                try:
+                    async with scr:
+                        jobs = await scr.fetch_jobs()
+                        logger.info(f"[{scr.SOURCE_NAME}] → {len(jobs)} jobs scraped")
+                        return jobs
+                except Exception as exc:
+                    logger.error(f"[{scr.SOURCE_NAME}] Scraper crashed: {exc}")
+                    stats["errors"] += 1
+                    return []
+                finally:
+                    gc.collect()
+
+        results = await asyncio.gather(*[_run_single_scraper(s) for s in scrapers], return_exceptions=True)
+        for res in results:
+            if isinstance(res, list):
+                all_jobs.extend(res)
 
     stats["scraped"] = len(all_jobs)
     logger.info(f"Total scraped: {len(all_jobs)} jobs across all sources")
@@ -250,6 +264,7 @@ async def run_pipeline(override_chat_id: str | None = None) -> dict:
         f"errors={stats['errors']} | "
         f"db_total={db_stats.get('total', '?')}"
     )
+    gc.collect()
     return stats
 
 
@@ -281,10 +296,7 @@ async def send_daily_digest() -> None:
             full_msg = full_msg[:3900] + "\n\n<i>… (lijst ingekort)</i>"
 
         async with NotifierDispatcher() as notifier:
-            for n in notifier._notifiers:
-                if isinstance(n, TelegramNotifier):
-                    for chat_id in n.chat_ids:
-                        await n._send_raw(full_msg, override_chat_id=chat_id)
+            await notifier.send_raw(full_msg, parse_mode="HTML")
         logger.info("[Scheduler] Daily digest sent successfully.")
     except Exception as e:
         logger.error(f"[Scheduler] Daily digest failed: {e}")
@@ -490,10 +502,13 @@ async def run_scheduler() -> None:
     async with NotifierDispatcher() as notifier:
         await notifier.send_startup_message()
 
-    # Optionally run immediately on startup
+    # Optionally run immediately on startup in background
     if run_on_startup:
-        logger.info("Running initial scrape cycle…")
-        await run_pipeline()
+        logger.info("Scheduling initial scrape cycle (background task)…")
+        async def _startup_worker():
+            await asyncio.sleep(2)
+            await run_pipeline()
+        asyncio.create_task(_startup_worker(), name="startup_scrape")
 
     # Keep the event loop alive
     try:

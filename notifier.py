@@ -79,6 +79,10 @@ class TelegramNotifier:
         placeholder = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
         return bool(self.bot_token and self.bot_token != placeholder and self.chat_id)
 
+    @property
+    def chat_ids(self) -> list[str]:
+        return [c.strip() for c in self.chat_id.split(",") if c.strip()]
+
     async def __aenter__(self) -> "TelegramNotifier":
         self._client = httpx.AsyncClient(timeout=15.0)
         return self
@@ -120,9 +124,20 @@ class TelegramNotifier:
         )
         await self._send_raw(text)
 
-    async def send_raw(self, text: str, job_id: str = "system") -> NotifyResult:
+    async def send_raw(
+        self,
+        text: str,
+        job_id: str = "system",
+        parse_mode: str = "MarkdownV2",
+        override_chat_id: str | None = None,
+    ) -> NotifyResult:
         """Send arbitrary pre-formatted text."""
-        return await self._send_with_retry(job_id, text)
+        return await self._send_with_retry(
+            job_id,
+            text,
+            parse_mode=parse_mode,
+            override_chat_id=override_chat_id,
+        )
 
     # -----------------------------------------------------------------------
     # Message Formatting
@@ -193,16 +208,32 @@ class TelegramNotifier:
     # HTTP / Retry Logic
     # -----------------------------------------------------------------------
 
-    async def _send_raw(self, text: str) -> None:
+    async def _send_raw(
+        self,
+        text: str,
+        parse_mode: str = "MarkdownV2",
+        override_chat_id: str | None = None,
+    ) -> None:
         """Send raw text without tracking job_id."""
         if not self.is_configured:
             return
         async with httpx.AsyncClient(timeout=15.0) as client:
             self._client = client
-            await self._send_with_retry("system", text)
+            await self._send_with_retry(
+                "system",
+                text,
+                parse_mode=parse_mode,
+                override_chat_id=override_chat_id,
+            )
             self._client = None
 
-    async def _send_with_retry(self, job_id: str, text: str) -> NotifyResult:
+    async def _send_with_retry(
+        self,
+        job_id: str,
+        text: str,
+        parse_mode: str = "MarkdownV2",
+        override_chat_id: str | None = None,
+    ) -> NotifyResult:
         """Send a message with exponential backoff on failure, supporting multiple chat IDs."""
         client = self._client
         own_client = False
@@ -210,12 +241,16 @@ class TelegramNotifier:
             client = httpx.AsyncClient(timeout=15.0)
             own_client = True
 
-        chat_ids = [c.strip() for c in self.chat_id.split(",") if c.strip()]
+        target_ids = (
+            [c.strip() for c in override_chat_id.split(",") if c.strip()]
+            if override_chat_id
+            else self.chat_ids
+        )
         any_success = False
         last_error = None
 
         try:
-            for target_chat in chat_ids:
+            for target_chat in target_ids:
                 for attempt in range(1, MAX_RETRIES + 1):
                     try:
                         response = await client.post(
@@ -223,7 +258,7 @@ class TelegramNotifier:
                             json={
                                 "chat_id": target_chat,
                                 "text": text,
-                                "parse_mode": "MarkdownV2",
+                                "parse_mode": parse_mode,
                                 "disable_web_page_preview": False,
                             },
                         )
@@ -300,5 +335,24 @@ class NotifierDispatcher:
         await self._notifier.send_summary(found, total_scraped)
 
     @property
+    def _notifiers(self) -> list[TelegramNotifier]:
+        return [self._notifier]
+
+
+    async def send_raw(
+        self,
+        text: str,
+        parse_mode: str = "MarkdownV2",
+        override_chat_id: str | None = None,
+    ) -> list[NotifyResult]:
+        result = await self._notifier.send_raw(
+            text,
+            parse_mode=parse_mode,
+            override_chat_id=override_chat_id,
+        )
+        return [result]
+
+    @property
     def any_success(self) -> bool:
         return self._notifier.is_configured
+

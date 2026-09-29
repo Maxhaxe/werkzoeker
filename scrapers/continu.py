@@ -38,7 +38,7 @@ class ContinuScraper(BaseScraper):
 
         async def _fetch_category(target_url: str) -> dict[str, JobItem]:
             cat_items: dict[str, JobItem] = {}
-            for page in range(1, min(15, self.max_pages + 1)):
+            for page in range(1, self.max_pages + 1):
                 page_url = f"{target_url}?page={page}" if page > 1 else target_url
                 response = await self.safe_get(page_url)
                 if not response or response.status_code != 200:
@@ -46,33 +46,36 @@ class ContinuScraper(BaseScraper):
 
                 soup = BeautifulSoup(response.text, "html.parser")
                 page_links_count = 0
-                for a in soup.find_all("a", href=True):
-                    href = a["href"]
-                    if "/vacatures/" in href or "/vacature/" in href:
-                        url = urljoin("https://www.continu.nl", href)
-                        title = self.clean_text(a.get_text())
-                        if not title or len(title) < 5 or title.lower() in ("vacatures", "bekijk vacature", "lees meer"):
-                            continue
+                try:
+                    for a in soup.find_all("a", href=True):
+                        href = a["href"]
+                        if "/vacatures/" in href or "/vacature/" in href:
+                            url = urljoin("https://www.continu.nl", href)
+                            title = self.clean_text(a.get_text())
+                            if not title or len(title) < 5 or title.lower() in ("vacatures", "bekijk vacature", "lees meer"):
+                                continue
 
-                        page_links_count += 1
-                        job_id = self.make_id(url)
-                        if job_id not in cat_items:
-                            cat_items[job_id] = JobItem(
-                                id=job_id,
-                                title=title,
-                                source=self.SOURCE_NAME,
-                                url=url,
-                                description=f"{title} — Engineering / Elektrotechniek vacature bij Continu Professionals",
-                                published_at=datetime.utcnow(),
-                            )
+                            page_links_count += 1
+                            job_id = self.make_id(url)
+                            if job_id not in cat_items:
+                                cat_items[job_id] = JobItem(
+                                    id=job_id,
+                                    title=title,
+                                    source=self.SOURCE_NAME,
+                                    url=url,
+                                    description=f"{title} — Engineering / Elektrotechniek vacature bij Continu Professionals",
+                                    published_at=datetime.utcnow(),
+                                )
+                finally:
+                    soup.decompose()
 
                 if page_links_count == 0:
                     break
                 await asyncio.sleep(self.rate_limit_delay)
             return cat_items
 
-        results_list = await asyncio.gather(*[_fetch_category(url) for url in CONTINU_URLS])
-        for res in results_list:
+        for url in CONTINU_URLS:
+            res = await _fetch_category(url)
             all_items.update(res)
 
         results = list(all_items.values())

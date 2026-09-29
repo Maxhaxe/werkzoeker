@@ -12,7 +12,11 @@ services:
       - key: TELEGRAM_CHAT_ID
         sync: false
       - key: MAX_PAGES_PER_SCRAPER
-        value: "50"
+        value: "3"
+      - key: MAX_CONCURRENT_SCRAPERS
+        value: "2"
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: SCORE_THRESHOLD
         value: "3"
       - key: REQUIRE_FREELANCE_INDICATOR

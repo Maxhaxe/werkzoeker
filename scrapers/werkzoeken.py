@@ -60,7 +60,7 @@ class WerkzoekenScraper(BaseScraper):
 
         async def _fetch_query(query: str) -> dict[str, JobItem]:
             query_items: dict[str, JobItem] = {}
-            for page in range(1, min(15, self.max_pages + 1)):
+            for page in range(1, self.max_pages + 1):
                 params = {"q": query, "page": page}
                 url = f"{SEARCH_URL}?{urlencode(params)}"
                 response = await self.safe_get(url, headers=headers)
@@ -69,34 +69,37 @@ class WerkzoekenScraper(BaseScraper):
 
                 soup = BeautifulSoup(response.text, "html.parser")
                 page_links_count = 0
-                for a in soup.find_all("a", href=True):
-                    href = a["href"]
-                    if "/vacature/" in href:
-                        full_url = urljoin("https://www.werkzoeken.nl", href)
-                        title = self.clean_text(a.get_text())
-                        if not title or len(title) < 5 or title.lower() in ("bekijk vacature", "vacatures", "solliciteer"):
-                            continue
+                try:
+                    for a in soup.find_all("a", href=True):
+                        href = a["href"]
+                        if "/vacature/" in href:
+                            full_url = urljoin("https://www.werkzoeken.nl", href)
+                            title = self.clean_text(a.get_text())
+                            if not title or len(title) < 5 or title.lower() in ("bekijk vacature", "vacatures", "solliciteer"):
+                                continue
 
-                        page_links_count += 1
-                        job_id = self.make_id(full_url)
-                        if job_id not in query_items:
-                            query_items[job_id] = JobItem(
-                                id=job_id,
-                                title=title,
-                                source=self.SOURCE_NAME,
-                                url=full_url,
-                                description=f"{title} — Vacature/opdracht bij Werkzoeken.nl",
-                                rate_or_hours=FreelanceNLScraper._extract_rate(title),
-                                published_at=datetime.utcnow(),
-                            )
+                            page_links_count += 1
+                            job_id = self.make_id(full_url)
+                            if job_id not in query_items:
+                                query_items[job_id] = JobItem(
+                                    id=job_id,
+                                    title=title,
+                                    source=self.SOURCE_NAME,
+                                    url=full_url,
+                                    description=f"{title} — Vacature/opdracht bij Werkzoeken.nl",
+                                    rate_or_hours=FreelanceNLScraper._extract_rate(title),
+                                    published_at=datetime.utcnow(),
+                                )
+                finally:
+                    soup.decompose()
 
                 if page_links_count == 0:
                     break
                 await asyncio.sleep(self.rate_limit_delay)
             return query_items
 
-        results_list = await asyncio.gather(*[_fetch_query(q) for q in SEARCH_QUERIES])
-        for res in results_list:
+        for q in SEARCH_QUERIES:
+            res = await _fetch_query(q)
             all_items.update(res)
 
         results = list(all_items.values())
