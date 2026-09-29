@@ -22,9 +22,10 @@ def temp_keywords(tmp_path):
     return kw_file
 
 @pytest.fixture
-def handler(temp_keywords):
+def handler(temp_keywords, tmp_path):
     h = TelegramCommandHandler()
     h.keywords_file = temp_keywords
+    h.SETTINGS_FILE = tmp_path / "bot_settings.json"
     h._send = AsyncMock()
     h._active_chat_id = "123456"
     return h
