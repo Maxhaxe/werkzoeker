@@ -27,9 +27,12 @@ class StriiveScraper(BaseScraper):
 
     SOURCE_NAME = "Striive.com"
 
-    def __init__(self, max_pages: int = 25, **kwargs):
+    def __init__(self, max_pages: int | None = None, **kwargs):
         super().__init__(**kwargs)
-        self.max_pages = max_pages
+        if max_pages is not None:
+            self.max_pages = max_pages
+        else:
+            self.max_pages = int(os.getenv("MAX_PAGES_PER_SCRAPER", "3"))
 
     async def fetch_jobs(self) -> list[JobItem]:
         all_items: dict[str, JobItem] = {}

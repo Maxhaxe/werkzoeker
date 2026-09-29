@@ -46,7 +46,7 @@ class TechnischeVacaturebankScraper(BaseScraper):
             url = f"{SEARCH_URL}?{urlencode(params)}"
             response = await self.safe_get(url)
             if not response:
-                continue
+                break
 
             soup = BeautifulSoup(response.text, "html.parser")
             for a in soup.find_all("a", href=True):

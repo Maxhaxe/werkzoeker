@@ -20,7 +20,7 @@ services:
       - key: SCORE_THRESHOLD
         value: "3"
       - key: REQUIRE_FREELANCE_INDICATOR
-        value: "true"
+        value: "false"
       - key: LOG_LEVEL
         value: "INFO"
       - key: INCLUDE_ALREADY_STARTED

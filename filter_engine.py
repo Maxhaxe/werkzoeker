@@ -237,7 +237,7 @@ def show_keywords(keywords_file: str | None = None) -> None:
     print("\n")
 
 # Default threshold (overridden by .env SCORE_THRESHOLD)
-DEFAULT_SCORE_THRESHOLD = 6
+DEFAULT_SCORE_THRESHOLD = 3
 
 # Default start-date window (months ahead)
 DEFAULT_MAX_START_MONTHS = 6
@@ -309,8 +309,13 @@ class FilterEngine:
             re.compile(r"\b" + re.escape(p) + r"\b", re.IGNORECASE)
             for p in INCLUDE_PATTERNS
         ]
+        def _make_keyword_pattern(kw: str) -> re.Pattern:
+            prefix = r"\b" if re.match(r"^\w", kw) else ""
+            suffix = r"\b" if re.search(r"\w$", kw) else ""
+            return re.compile(f"{prefix}{re.escape(kw)}{suffix}", re.IGNORECASE)
+
         self._keyword_re: list[tuple[re.Pattern, str, int]] = [
-            (re.compile(re.escape(kw), re.IGNORECASE), kw, pts)
+            (_make_keyword_pattern(kw), kw, pts)
             for kw, pts in sorted(active_keywords.items(), key=lambda x: -len(x[0]))  # longest first
         ]
         logger.debug(
@@ -335,13 +340,13 @@ class FilterEngine:
 
         # Dedicated freelance portals skip the mandatory keyword check (their postings are 100% freelance/ZZP)
         freelance_portals = {
-            "Freelance.nl", "Striive.com", "BlueBeaver.nl", "Hoofdkraan.nl",
-            "Freelancenetwerk.nl", "Matchd",
+            "freelance.nl", "striive.com", "bluebeaver.nl", "hoofdkraan.nl",
+            "freelancenetwerk.nl", "matchd", "freep.nl", "freep",
         }
-        is_dedicated_freelance = job.source in freelance_portals
+        is_dedicated_freelance = job.source.lower().strip() in freelance_portals
 
         # ---- Phase A: Require freelance / ZZP / interim indicator ----
-        require_freelance = os.getenv("REQUIRE_FREELANCE_INDICATOR", "true").lower() in ("true", "1", "yes")
+        require_freelance = os.getenv("REQUIRE_FREELANCE_INDICATOR", "false").lower() in ("true", "1", "yes")
         if require_freelance and not is_dedicated_freelance:
             has_freelance_indicator = any(p.search(text) for p in self._include_re)
             if not has_freelance_indicator:

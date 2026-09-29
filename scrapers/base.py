@@ -134,11 +134,14 @@ class BaseScraper(ABC):
 
     async def safe_get(self, url: str, **kwargs) -> Optional[httpx.Response]:
         """GET with error handling. Returns None on failure."""
+        self.last_status_code = None
         try:
             response = await self.client.get(url, **kwargs)
+            self.last_status_code = response.status_code
             response.raise_for_status()
             return response
         except httpx.HTTPStatusError as e:
+            self.last_status_code = e.response.status_code
             logger.warning(
                 f"[{self.SOURCE_NAME}] HTTP {e.response.status_code} for {url}"
             )
@@ -147,6 +150,7 @@ class BaseScraper(ABC):
                 try:
                     async with httpx.AsyncClient(verify=False, headers=self.DEFAULT_HEADERS, timeout=self.timeout, follow_redirects=True) as fallback_client:
                         res = await fallback_client.get(url, **kwargs)
+                        self.last_status_code = res.status_code
                         res.raise_for_status()
                         return res
                 except Exception as fb_err:

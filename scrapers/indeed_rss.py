@@ -39,11 +39,17 @@ class IndeedRSSScraper(BaseScraper):
 
     SOURCE_NAME = "Indeed NL"
     _rate_semaphore = asyncio.Semaphore(2)  # Max 2 concurrent Indeed RSS requests across all instances
+    _is_blocked = False
 
     async def fetch_jobs(self) -> list[JobItem]:
+        if IndeedRSSScraper._is_blocked:
+            return []
+
         all_items: dict[str, JobItem] = {}
 
         for params in SEARCH_QUERIES:
+            if IndeedRSSScraper._is_blocked:
+                break
             items = await self._fetch_query(params)
             for item in items:
                 if item.id not in all_items:
@@ -55,12 +61,23 @@ class IndeedRSSScraper(BaseScraper):
         return results
 
     async def _fetch_query(self, params: dict) -> list[JobItem]:
+        if IndeedRSSScraper._is_blocked:
+            return []
+
         url = f"{INDEED_RSS_BASE}?{urlencode(params)}"
         logger.debug(f"[{self.SOURCE_NAME}] Fetching: {url}")
 
         async with IndeedRSSScraper._rate_semaphore:
             await asyncio.sleep(0.4)  # Throttle Indeed RSS requests to avoid 429
             response = await self.safe_get(url)
+
+        if getattr(self, "last_status_code", None) == 403:
+            IndeedRSSScraper._is_blocked = True
+            logger.warning(
+                f"[{self.SOURCE_NAME}] HTTP 403 received from Indeed RSS (Cloudflare block). "
+                f"Disabling all Indeed RSS scrapers for this cycle."
+            )
+            return []
 
         if not response:
             return []
