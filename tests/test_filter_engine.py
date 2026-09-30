@@ -80,3 +80,22 @@ def test_score_threshold_enforcement(monkeypatch):
     res8 = engine.evaluate(job_score_8)
     assert res8.passed
     assert res8.score >= 7
+
+
+def test_phase_a_freelance_with_boilerplate_perks(filter_engine_default):
+    # A freelance job from a non-dedicated portal that mentions boilerplate leaseauto/pensioenregeling
+    job = JobItem(
+        id="job-zzp-with-perks",
+        title="Detail Engineer Elektrotechniek Freelance",
+        source="Enginear.nl",
+        url="https://example.com/job-zzp-perks",
+        description=(
+            "Gezocht: Detail Engineer Elektrotechniek voor een ZZP opdracht op uurtarief basis. "
+            "EPLAN P8 en AutoCAD. Over het bureau: voor medewerkers in loondienst bieden we een pensioenregeling en leaseauto."
+        ),
+        published_at=datetime.utcnow(),
+    )
+    result = filter_engine_default.evaluate(job)
+    assert result.passed
+    assert result.score >= 3
+

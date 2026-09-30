@@ -38,13 +38,25 @@ DEFAULT_KEYWORDS_FILE = "keywords.json"
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Phase A — Exclusion patterns (case-insensitive, any match = reject)
-EXCLUDE_PATTERNS: list[str] = [
+# Phase A — Strict exclusion patterns (always reject unless dedicated freelance portal)
+STRICT_EXCLUDE_PATTERNS: list[str] = [
     "vast contract",
     "vaste aanstelling",
     "vaste baan",
     "onbepaalde tijd",
     "arbeidsovereenkomst voor onbepaalde",
+    "geen zzp",
+    "geen freelance",
+    "uitsluitend loondienst",
+    "alleen loondienst",
+    "junior trainee",
+    "traineeship",
+    "graduate",
+    "management traineeship",
+]
+
+# Phase A — Soft employee perk patterns (only reject if NO freelance/ZZP indicator is found)
+SOFT_EXCLUDE_PATTERNS: list[str] = [
     "in loondienst",
     "loondienst",
     "leaseauto",
@@ -52,11 +64,10 @@ EXCLUDE_PATTERNS: list[str] = [
     "werving & selectie",
     "werving en selectie",
     "w&s",
-    "junior trainee",
-    "traineeship",
-    "graduate",
-    "management traineeship",
 ]
+
+# Combined list for backwards compatibility
+EXCLUDE_PATTERNS: list[str] = STRICT_EXCLUDE_PATTERNS + SOFT_EXCLUDE_PATTERNS
 
 # Phase A — Inclusion patterns (at least one required)
 INCLUDE_PATTERNS: list[str] = [
@@ -301,10 +312,15 @@ class FilterEngine:
         self.keywords_count = len(active_keywords)
 
         # Pre-compile all patterns for performance
-        self._exclude_re = [
+        self._strict_exclude_re = [
             re.compile(r"\b" + re.escape(p) + r"\b", re.IGNORECASE)
-            for p in EXCLUDE_PATTERNS
+            for p in STRICT_EXCLUDE_PATTERNS
         ]
+        self._soft_exclude_re = [
+            re.compile(r"\b" + re.escape(p) + r"\b", re.IGNORECASE)
+            for p in SOFT_EXCLUDE_PATTERNS
+        ]
+        self._exclude_re = self._strict_exclude_re + self._soft_exclude_re
         self._include_re = [
             re.compile(r"\b" + re.escape(p) + r"\b", re.IGNORECASE)
             for p in INCLUDE_PATTERNS
@@ -331,28 +347,37 @@ class FilterEngine:
         # Combine title + description for matching (title is weighted twice)
         text = f"{job.title} {job.title} {job.description}".strip().lower()
 
-        # ---- Phase A: Hard exclusions ----
-        for pattern in self._exclude_re:
-            if pattern.search(text):
-                reason = f"Excluded by pattern: '{pattern.pattern}'"
-                logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
-                return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
-
         # Dedicated freelance portals skip the mandatory keyword check (their postings are 100% freelance/ZZP)
         freelance_portals = {
             "freelance.nl", "striive.com", "bluebeaver.nl", "hoofdkraan.nl",
             "freelancenetwerk.nl", "matchd", "freep.nl", "freep",
         }
         is_dedicated_freelance = job.source.lower().strip() in freelance_portals
+        has_freelance_indicator = any(p.search(text) for p in self._include_re)
+
+        # ---- Phase A: Hard exclusions ----
+        if not is_dedicated_freelance:
+            # 1. Strict disqualifiers (vast contract, geen zzp, traineeship)
+            for pattern in self._strict_exclude_re:
+                if pattern.search(text):
+                    reason = f"Excluded by pattern: '{pattern.pattern}'"
+                    logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
+                    return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
+
+            # 2. Soft perk disqualifiers (loondienst, leaseauto) ONLY apply if no freelance indicator was found
+            if not has_freelance_indicator:
+                for pattern in self._soft_exclude_re:
+                    if pattern.search(text):
+                        reason = f"Excluded by pattern: '{pattern.pattern}'"
+                        logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
+                        return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
 
         # ---- Phase A: Require freelance / ZZP / interim indicator ----
         require_freelance = os.getenv("REQUIRE_FREELANCE_INDICATOR", "false").lower() in ("true", "1", "yes")
-        if require_freelance and not is_dedicated_freelance:
-            has_freelance_indicator = any(p.search(text) for p in self._include_re)
-            if not has_freelance_indicator:
-                reason = "Geen freelance/ZZP/interim indicator gevonden"
-                logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
-                return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
+        if require_freelance and not is_dedicated_freelance and not has_freelance_indicator:
+            reason = "Geen freelance/ZZP/interim indicator gevonden"
+            logger.debug(f"[Filter] REJECT '{job.title[:50]}' — {reason}")
+            return FilterResult(passed=False, score=0, matched_keywords=[], rejection_reason=reason)
 
         # ---- Phase B: Technical scoring ----
         score = 0
@@ -384,7 +409,7 @@ class FilterEngine:
             display_label = f"{start_label} | {end_label}" if start_label != "onbekend" else end_label
         job.start_date_label = display_label
 
-        if self.start_date_filter_active:
+        if self.start_date_filter_active or end_date is not None:
             pub_date = job.published_at.date() if job.published_at else None
             passes_window, window_reason = is_within_window(
                 start_date=start_date,

@@ -45,20 +45,28 @@ class StriiveScraper(BaseScraper):
         # Dedicated HTTP/1.1 client with verify=False for resilient TLS connection
         async with httpx.AsyncClient(
             headers=headers,
-            timeout=15.0,
+            timeout=30.0,
             verify=False,
             http2=False,
             follow_redirects=True,
         ) as client:
-            for page in range(1, min(3, self.max_pages) + 1):
+            for page in range(1, min(8, self.max_pages) + 1):
                 url = f"{API_URL}?limit=50&page={page}"
-                try:
-                    r = await client.get(url)
-                    if r.status_code != 200:
-                        break
-                    data = r.json()
-                except Exception as e:
-                    logger.warning(f"[{self.SOURCE_NAME}] API error on page {page}: {e}")
+                data = None
+                for attempt in range(2):
+                    try:
+                        r = await client.get(url)
+                        if r.status_code == 200:
+                            data = r.json()
+                            break
+                        elif r.status_code == 404:
+                            break
+                    except Exception as e:
+                        if attempt == 1:
+                            logger.warning(f"[{self.SOURCE_NAME}] API error on page {page}: {e}")
+                        await asyncio.sleep(1.0)
+
+                if not data:
                     break
 
                 job_list = data.get("data", [])

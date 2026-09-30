@@ -17,11 +17,16 @@ from loguru import logger
 from .base import BaseScraper, JobItem
 
 FREELANCE_NL_CATEGORIES = [
+    "https://www.freelance.nl/opdrachten?query=elektrotechniek",
+    "https://www.freelance.nl/opdrachten?query=e-engineer",
+    "https://www.freelance.nl/opdrachten?query=detail+engineer",
+    "https://www.freelance.nl/opdrachten?query=eplan",
+    "https://www.freelance.nl/opdrachten?query=hoogspanning",
+    "https://www.freelance.nl/opdrachten?query=installatietechniek",
+    "https://www.freelance.nl/opdrachten?query=werkvoorbereider",
     "https://www.freelance.nl/opdrachten/systeem-componentintegratie",
     "https://www.freelance.nl/opdrachten/constructie-fabricage-advies",
-    "https://www.freelance.nl/opdrachten/constructie-fabricage-uitvoerend",
     "https://www.freelance.nl/opdrachten/ontwikkeling-implementatie",
-    "https://www.freelance.nl/opdrachten/ict",
     "https://www.freelance.nl/opdrachten",
 ]
 
@@ -45,8 +50,9 @@ class FreelanceNLScraper(BaseScraper):
         }
 
         for target_url in FREELANCE_NL_CATEGORIES:
-            for page in range(1, self.max_pages + 1):
-                page_url = f"{target_url}?page={page}" if page > 1 else target_url
+            for page in range(1, min(3, self.max_pages) + 1):
+                sep = "&" if "?" in target_url else "?"
+                page_url = f"{target_url}{sep}page={page}" if page > 1 else target_url
                 response = await self.safe_get(page_url, headers=headers)
                 if not response or response.status_code != 200:
                     break
