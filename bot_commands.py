@@ -154,7 +154,6 @@ class TelegramCommandHandler:
             params={
                 "offset": self._offset,
                 "timeout": POLL_TIMEOUT,
-                "allowed_updates": ["message"],
             },
         )
         data = resp.json()
@@ -172,14 +171,24 @@ class TelegramCommandHandler:
         return [cid.strip() for cid in raw.split(",") if cid.strip()]
 
     async def _send(self, text: str, parse_mode: str = "HTML", reply_chat_id: str | None = None) -> None:
-        """Send a reply to the specified chat or active chat."""
+        """Send a reply to the specified chat or active chat with automatic plain-text fallback."""
         target_chat = reply_chat_id or getattr(self, "_active_chat_id", None) or self.chat_id
         # If multiple IDs in self.chat_id, pick the first if target_chat contains comma
         if "," in target_chat:
             target_chat = target_chat.split(",")[0].strip()
 
+        if not target_chat:
+            logger.warning("[Bot] Cannot send reply: no target chat ID configured")
+            return
+
+        client = self._client
+        own_client = False
+        if client is None:
+            client = httpx.AsyncClient(timeout=15.0)
+            own_client = True
+
         try:
-            await self._client.post(
+            resp = await client.post(
                 f"{self._api}/sendMessage",
                 json={
                     "chat_id": target_chat,
@@ -189,8 +198,28 @@ class TelegramCommandHandler:
                 },
                 timeout=10,
             )
+            data = resp.json()
+            if not resp.is_success or not data.get("ok"):
+                err_msg = data.get("description", resp.text)
+                logger.warning(f"[Bot] Telegram API error ({resp.status_code}) for chat {target_chat}: {err_msg}")
+                # Fallback to plain text if HTML entity parsing failed
+                if parse_mode == "HTML" and ("can't parse entities" in err_msg or "entity" in err_msg):
+                    import re
+                    clean_text = re.sub(r"<[^>]+>", "", text)
+                    await client.post(
+                        f"{self._api}/sendMessage",
+                        json={
+                            "chat_id": target_chat,
+                            "text": clean_text,
+                            "disable_web_page_preview": True,
+                        },
+                        timeout=10,
+                    )
         except Exception as e:
             logger.warning(f"[Bot] Failed to send reply to chat {target_chat}: {e}")
+        finally:
+            if own_client:
+                await client.aclose()
 
     # -----------------------------------------------------------------------
     # Update Dispatcher
@@ -205,13 +234,29 @@ class TelegramCommandHandler:
         if not text or not chat_id:
             return
 
-        # Security check: allowed if chat_id in TELEGRAM_CHAT_ID list, OR if it's a group chat and ALLOW_GROUPS=true
+        # Parse command
+        parts  = text.split(None, 1)
+        cmd    = parts[0].lower().lstrip("/").split("@")[0]  # strip @botname suffix
+        args   = parts[1].strip() if len(parts) > 1 else ""
+
+        # Security check: allowed if:
+        # 1. Chat ID explicitly in TELEGRAM_CHAT_ID list or ADMIN_CHAT_ID
+        # 2. Group/supergroup chat (if ALLOW_GROUPS=true, default true)
+        # 3. Private 1-on-1 chat (if ALLOW_PRIVATE_CHATS=true, default true)
+        # 4. Standard commands like /start, /help, /run, /status
         allow_all_groups = os.getenv("ALLOW_GROUPS", "true").lower() in ("true", "1", "yes")
+        allow_private = os.getenv("ALLOW_PRIVATE_CHATS", "true").lower() in ("true", "1", "yes")
         admin_chat = os.getenv("ADMIN_CHAT_ID", "")
-        is_allowed = (chat_id in self.allowed_chat_ids) or (chat_id == admin_chat) or (allow_all_groups and chat_type in ("group", "supergroup"))
+        is_allowed = (
+            (chat_id in self.allowed_chat_ids)
+            or (chat_id == admin_chat)
+            or (allow_all_groups and chat_type in ("group", "supergroup"))
+            or (allow_private and chat_type == "private")
+            or cmd in ("start", "help", "run", "status")
+        )
 
         if not is_allowed:
-            logger.debug(f"[Bot] Ignored message from unauthorized chat {chat_id} (type={chat_type})")
+            logger.warning(f"[Bot] Ignored message from unauthorized chat {chat_id} (type={chat_type})")
             return
 
         # Store active chat ID so replies go to the exact group/chat that issued the command
@@ -219,11 +264,6 @@ class TelegramCommandHandler:
         # Automatically register chat_id so notifications dispatch to this chat/group
         self._register_chat_id(chat_id)
         logger.info(f"[Bot] Command received in {chat_type} ({chat_id}): '{text}'")
-
-        # Parse command
-        parts  = text.split(None, 1)
-        cmd    = parts[0].lower().lstrip("/").split("@")[0]  # strip @botname suffix
-        args   = parts[1].strip() if len(parts) > 1 else ""
 
         handlers = {
             "help":        self._cmd_help,
@@ -664,11 +704,14 @@ class TelegramCommandHandler:
             ]
 
             for idx, j in enumerate(jobs[:15], 1):
-                loc = f" 📍 {j['location']}" if j.get("location") else ""
-                rate = f" 💰 {j['rate_or_hours']}" if j.get("rate_or_hours") else ""
+                safe_title = html.escape(j.get('title') or '')
+                safe_source = html.escape(j.get('source') or '')
+                safe_url = html.escape(j.get('url') or '')
+                safe_loc = f" 📍 {html.escape(j['location'])}" if j.get("location") else ""
+                safe_rate = f" 💰 {html.escape(j['rate_or_hours'])}" if j.get("rate_or_hours") else ""
                 lines.append(
-                    f"{idx}. <a href=\"{j['url']}\"><b>{j['title']}</b></a>\n"
-                    f"   🏢 {j['source']}{loc}{rate} | ⭐ Score: {j['score']}"
+                    f"{idx}. <a href=\"{safe_url}\"><b>{safe_title}</b></a>\n"
+                    f"   🏢 {safe_source}{safe_loc}{safe_rate} | ⭐ Score: {j.get('score', 0)}"
                 )
 
             if len(jobs) > 15:
@@ -702,6 +745,10 @@ class TelegramCommandHandler:
             try:
                 target_chat = getattr(self, "_active_chat_id", None)
                 stats = await self._run_pipeline(override_chat_id=target_chat)
+                if stats.get("status") == "busy":
+                    await self._send("⚠️ <b>Er draait momenteel al een scan op de achtergrond!</b>\nEven geduld a.u.b., je ontvangt de resultaten zodra deze klaar is.")
+                    return
+
                 scraped = stats.get('scraped', 0)
                 passed = stats.get('passed_filter', 0)
                 new_cnt = stats.get('new_jobs', 0)
@@ -725,8 +772,9 @@ class TelegramCommandHandler:
                     for job, score in sorted_jobs[:10]:
                         safe_title = html.escape(job.title)
                         safe_source = html.escape(job.source)
+                        safe_url = html.escape(job.url)
                         msg_lines.append(
-                            f"• <a href=\"{job.url}\"><b>{safe_title}</b></a>\n"
+                            f"• <a href=\"{safe_url}\"><b>{safe_title}</b></a>\n"
                             f"  🏢 {safe_source} | ⭐ Score: {score}"
                         )
                 else:

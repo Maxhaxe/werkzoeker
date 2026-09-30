@@ -41,3 +41,45 @@ def test_indeed_rss_parser():
     assert jobs[0].title == "Detail Engineer Elektrotechniek"
     assert "EPLAN Engineer ZZP" in jobs[0].description
     assert jobs[0].source == "Indeed NL"
+
+
+@pytest.mark.asyncio
+async def test_striive_url_generation():
+    from scrapers.striive import StriiveScraper
+
+    scraper = StriiveScraper(max_pages=1)
+    
+    mock_data = {
+        "data": [
+            {
+                "id": "abc-123",
+                "title": "Lead E&I Engineer",
+                "titleSlug": "lead-ei-engineer",
+                "brokerUrl": "https://striive.com/nl/opdracht/direct-link",
+                "summary": "ZZP opdracht E&I",
+            },
+            {
+                "id": "def-456",
+                "title": "Hardware Engineer",
+                "titleSlug": "hardware-engineer",
+                "summary": "ZZP hardware engineer",
+            }
+        ]
+    }
+
+    with patch("httpx.AsyncClient") as mock_client_cls:
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+        mock_resp.is_success = True
+        mock_resp.json = lambda: mock_data
+        client_instance = AsyncMock()
+        client_instance.get.return_value = mock_resp
+        mock_client_cls.return_value.__aenter__.return_value = client_instance
+
+        jobs = await scraper.fetch_jobs()
+        assert len(jobs) == 2
+        # First job uses brokerUrl
+        assert jobs[0].url == "https://striive.com/nl/opdracht/direct-link"
+        # Second job falls back to canonical working ?id= URL
+        assert jobs[1].url == "https://striive.com/nl/opdrachten?id=def-456"
+

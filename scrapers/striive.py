@@ -72,7 +72,8 @@ class StriiveScraper(BaseScraper):
                     if not title or not raw_id:
                         continue
 
-                    url = f"https://www.striive.com/opdracht/{slug}-{raw_id}" if slug else f"https://www.striive.com/opdrachten/{raw_id}"
+                    # Use official brokerUrl or canonical ?id= URL (avoids 404 on obsolete /opdracht/slug paths)
+                    url = raw.get("brokerUrl") or f"https://striive.com/nl/opdrachten?id={raw_id}"
                     job_id = self.make_id(url)
 
                     if job_id in all_items:
