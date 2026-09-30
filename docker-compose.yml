@@ -1,0 +1,21 @@
+services:
+  werkzoeker:
+    build: .
+    container_name: werkzoeker-bot
+    restart: always
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
+      - SCORE_THRESHOLD=3
+      - MAX_PAGES_PER_SCRAPER=3
+      - MAX_CONCURRENT_SCRAPERS=2
+      - REQUEST_TIMEOUT=15
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./jobs.db:/app/jobs.db
+      - ./bot_settings.json:/app/bot_settings.json
+      - ./keywords.json:/app/keywords.json
+      - ./werkzoeker.log:/app/werkzoeker.log
+    ports:
+      - "10000:10000"

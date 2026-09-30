@@ -38,7 +38,7 @@ class ContinuScraper(BaseScraper):
 
         async def _fetch_category(target_url: str) -> dict[str, JobItem]:
             cat_items: dict[str, JobItem] = {}
-            for page in range(1, self.max_pages + 1):
+            for page in range(1, min(2, self.max_pages) + 1):
                 page_url = f"{target_url}?page={page}" if page > 1 else target_url
                 response = await self.safe_get(page_url)
                 if not response or response.status_code != 200:

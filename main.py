@@ -17,8 +17,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import gc
+import json
 import os
 import sys
+import time
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -413,8 +415,15 @@ async def test_notify() -> None:
 # Health Server (Required for Render Web Service Free Tier)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Health Server (Required for Render Web Service / Cloud Deployment Health Checks)
+# ---------------------------------------------------------------------------
+
+_BOT_START_TIME = time.time()
+
+
 async def start_health_server() -> None:
-    """Start a lightweight HTTP server so Render Web Service health checks pass."""
+    """Start a lightweight HTTP server returning JSON health info and uptime."""
     port_str = os.getenv("PORT", "10000")
     try:
         port = int(port_str)
@@ -423,14 +432,30 @@ async def start_health_server() -> None:
 
     async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
-            await reader.read(1024)
+            line = await reader.readline()
+            req_line = line.decode("utf-8", errors="ignore").strip()
+            # Consume rest of request headers
+            while True:
+                h = await reader.readline()
+                if not h or h == b"\r\n":
+                    break
+
+            uptime_seconds = int(time.time() - _BOT_START_TIME)
+            status_payload = {
+                "status": "ok",
+                "service": "werkzoeker-bot",
+                "uptime_seconds": uptime_seconds,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            body = json.dumps(status_payload, indent=2)
+            body_bytes = body.encode("utf-8")
             resp = (
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: 2\r\n"
-                "Connection: close\r\n\r\nOK"
-            )
-            writer.write(resp.encode("utf-8"))
+                f"HTTP/1.1 200 OK\r\n"
+                f"Content-Type: application/json; charset=utf-8\r\n"
+                f"Content-Length: {len(body_bytes)}\r\n"
+                f"Connection: close\r\n\r\n"
+            ).encode("utf-8") + body_bytes
+            writer.write(resp)
             await writer.drain()
         except Exception:
             pass
@@ -510,10 +535,22 @@ async def run_scheduler() -> None:
             await run_pipeline()
         asyncio.create_task(_startup_worker(), name="startup_scrape")
 
-    # Keep the event loop alive
+    # Keep the event loop alive with watchdog monitoring over handler_task
     try:
         while True:
-            await asyncio.sleep(60)
+            await asyncio.sleep(10)
+            if handler_task.done():
+                exc = handler_task.exception() if not handler_task.cancelled() else None
+                logger.error(
+                    f"[Bot] Telegram command handler task stopped unexpectedly! (Error: {exc}). "
+                    f"Restarting listener in 5s…"
+                )
+                await asyncio.sleep(5)
+                cmd_handler = TelegramCommandHandler(run_pipeline_fn=run_pipeline)
+                handler_task = asyncio.create_task(
+                    cmd_handler.start(),
+                    name="telegram_command_handler"
+                )
     except (KeyboardInterrupt, SystemExit):
         logger.info("Shutting down WerkZoeker…")
         cmd_handler.stop()

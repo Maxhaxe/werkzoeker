@@ -50,7 +50,7 @@ class StriiveScraper(BaseScraper):
             http2=False,
             follow_redirects=True,
         ) as client:
-            for page in range(1, self.max_pages + 1):
+            for page in range(1, min(3, self.max_pages) + 1):
                 url = f"{API_URL}?limit=50&page={page}"
                 try:
                     r = await client.get(url)

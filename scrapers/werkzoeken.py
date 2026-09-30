@@ -60,7 +60,7 @@ class WerkzoekenScraper(BaseScraper):
 
         async def _fetch_query(query: str) -> dict[str, JobItem]:
             query_items: dict[str, JobItem] = {}
-            for page in range(1, self.max_pages + 1):
+            for page in range(1, min(2, self.max_pages) + 1):
                 params = {"q": query, "page": page}
                 url = f"{SEARCH_URL}?{urlencode(params)}"
                 response = await self.safe_get(url, headers=headers)
